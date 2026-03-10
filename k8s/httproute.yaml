@@ -6,6 +6,8 @@ metadata:
 spec:
   parentRefs:
     - name: erthiscan-gateway
+      namespace: erthiscan
+      sectionName: web
   rules:
     - matches:
         - path:
