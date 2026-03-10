@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 
-app = FastAPI # create the fastapi application instance
+# create the fastapi application instance
+app = FastAPI
 
-@app.get("/health") # Define a simple health check endpoint
+# Define a simple health check endpoint
+@app.get("/health")
 def health_check():
     return {"status": "ok"}
