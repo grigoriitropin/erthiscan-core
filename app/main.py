@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 # create the fastapi application instance
-app = FastAPI
+app = FastAPI()
 
 # Define a simple health check endpoint
 @app.get("/health")
