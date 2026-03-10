@@ -25,4 +25,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/grigoriitropin/erthiscan-core:latest
+          tags: |
+            ghcr.io/grigoriitropin/erthiscan-core:latest
+            ghcr.io/grigoriitropin/erthiscan-core:${{ github.sha }}
+
