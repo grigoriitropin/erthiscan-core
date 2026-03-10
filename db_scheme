@@ -1,0 +1,39 @@
+users
+
+  id
+  google_id
+  email
+  username
+
+companies
+
+  id
+  name
+  ethical_score
+
+products
+
+  barcode
+  name
+  company_id
+  openfoodfacts_url
+  verified
+
+reports
+
+  id
+  company_id
+  user_id
+  parent_id
+  depth
+  type
+  text
+  sources
+  created_at
+
+votes
+
+  id
+  report_id
+  user_id
+  value
