@@ -9,6 +9,8 @@ companies
   id
   name
   ethical_score
+  top_level_report_count
+  pending_vote_count
 
 products
 
