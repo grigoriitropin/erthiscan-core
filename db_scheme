@@ -2,7 +2,6 @@ users
 
   id
   google_id
-  email
   username
 
 companies
@@ -16,8 +15,7 @@ products
   barcode
   name
   company_id
-  openfoodfacts_url
-  verified
+  open_facts_url
 
 reports
 
