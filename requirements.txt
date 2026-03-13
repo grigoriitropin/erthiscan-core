@@ -2,3 +2,5 @@ fastapi # Web framework for building the API
 uvicorn # ASGI server to run the FastAPI application
 asyncpg # Async PostgreSQL driver
 sqlalchemy[asyncio] #ORM and database toolkit
+alembic # Database migrations
+psycopg[binary] # Sync PostgreSQL driver for migrations

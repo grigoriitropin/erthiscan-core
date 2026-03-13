@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from sqlalchemy import text
-from models.database import WriteSession
+from app.models.database import ReadSession, WriteSession
 
 # create the fastapi application instance
 app = FastAPI()
@@ -14,4 +14,6 @@ def health_check():
 async def db_health():
     async with WriteSession() as session:
         await session.execute(text("SELECT 1"))
-    return {"database": "ok"}
+    async with ReadSession() as session:
+        await session.execute(text("SELECT 1"))
+    return {"database": "ok", "read": "ok"}
