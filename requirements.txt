@@ -4,3 +4,4 @@ asyncpg # Async PostgreSQL driver
 sqlalchemy[asyncio] #ORM and database toolkit
 alembic # Database migrations
 psycopg[binary] # Sync PostgreSQL driver for migrations
+httpx # HTTP client for collector lookups
