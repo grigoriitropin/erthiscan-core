@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from sqlalchemy import text
-from app.models.database import WriteSession
+from models.database import WriteSession
 
 # create the fastapi application instance
 app = FastAPI()
