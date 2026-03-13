@@ -13,7 +13,12 @@ class OpenFactsLookupError(Exception):
 
 
 def _extract_product_name(product_data: dict) -> str | None:
-    return product_data.get("product_name") or product_data.get("generic_name")
+    return (
+        product_data.get("product_name_en")
+        or product_data.get("product_name")
+        or product_data.get("generic_name_en")
+        or product_data.get("generic_name")
+    )
 
 
 def _extract_company_name(product_data: dict) -> str | None:
