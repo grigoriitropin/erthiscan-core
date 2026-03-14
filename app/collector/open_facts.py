@@ -46,7 +46,7 @@ async def fetch_and_store_product(barcode: str) -> dict | None:
         raise OpenFactsLookupError("write database is not configured")
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
             response = await client.get(
                 OPEN_FACTS_PRODUCT_URL.format(barcode=barcode),
                 params={"product_type": "all"},
