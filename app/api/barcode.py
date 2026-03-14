@@ -2,9 +2,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.collector.open_facts import OpenFactsLookupError, fetch_and_store_product
+from app.collector.open_facts import OpenFactsLookupError, fetch_and_store_product, store_product
 from app.models.company import Company
 from app.models.database import ReadSession
+from app.models.open_facts_product import OpenFactsProduct
 from app.models.product import Product
 
 router = APIRouter(prefix="/barcode", tags=["barcode"])
@@ -55,7 +56,27 @@ async def _get_local_product(barcode: str) -> tuple[Product, Company] | None:
     return product, company
 
 
+async def _get_imported_product(barcode: str) -> OpenFactsProduct | None:
+    if ReadSession is None:
+        raise HTTPException(status_code=500, detail="read database is not configured")
+
+    async with ReadSession() as session:
+        result = await session.execute(
+            select(OpenFactsProduct).where(OpenFactsProduct.barcode == barcode)
+        )
+        return result.scalar_one_or_none()
+
+
 async def _collect_product(barcode: str) -> dict:
+    imported_product = await _get_imported_product(barcode)
+    if imported_product is not None:
+        return await store_product(
+            barcode=imported_product.barcode,
+            product_name=imported_product.product_name,
+            company_name=imported_product.company_name,
+            open_facts_url=imported_product.open_facts_url,
+        )
+
     try:
         collected_product = await fetch_and_store_product(barcode)
     except OpenFactsLookupError as exc:

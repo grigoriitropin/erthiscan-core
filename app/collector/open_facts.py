@@ -41,35 +41,9 @@ def _build_open_facts_url(host: str | None, barcode: str) -> str | None:
     return f"https://{host}/product/{barcode}"
 
 
-async def fetch_and_store_product(barcode: str) -> dict | None:
+async def store_product(barcode: str, product_name: str, company_name: str, open_facts_url: str | None) -> dict:
     if WriteSession is None:
         raise OpenFactsLookupError("write database is not configured")
-
-    try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-            response = await client.get(
-                OPEN_FACTS_PRODUCT_URL.format(barcode=barcode),
-                params={"product_type": "all"},
-                headers={
-                    "User-Agent": "ErthiscanCore/0.1",
-                    "Accept": "application/json",
-                },
-            )
-            response.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise OpenFactsLookupError("open facts request failed") from exc
-
-    payload = response.json()
-    if payload.get("status") != 1:
-        return None
-
-    product_data = payload.get("product") or {}
-    product_name = _extract_product_name(product_data)
-    company_name = _extract_company_name(product_data)
-    open_facts_url = _build_open_facts_url(response.url.host, barcode)
-
-    if not product_name or not company_name:
-        return None
 
     async with WriteSession() as session:
         company_insert = insert(Company).values(name=company_name)
@@ -101,16 +75,46 @@ async def fetch_and_store_product(barcode: str) -> dict | None:
 
         await session.commit()
 
-        return {
-            "status": "found",
-            "product": {
-                "barcode": stored_barcode,
-                "name": stored_product_name,
-                "open_facts_url": stored_open_facts_url,
-            },
-            "company": {
-                "id": company_id,
-                "name": stored_company_name,
-                "ethical_score": ethical_score,
-            },
-        }
+    return {
+        "status": "found",
+        "product": {
+            "barcode": stored_barcode,
+            "name": stored_product_name,
+            "open_facts_url": stored_open_facts_url,
+        },
+        "company": {
+            "id": company_id,
+            "name": stored_company_name,
+            "ethical_score": ethical_score,
+        },
+    }
+
+
+async def fetch_and_store_product(barcode: str) -> dict | None:
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(
+                OPEN_FACTS_PRODUCT_URL.format(barcode=barcode),
+                params={"product_type": "all"},
+                headers={
+                    "User-Agent": "ErthiscanCore/0.1",
+                    "Accept": "application/json",
+                },
+            )
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise OpenFactsLookupError("open facts request failed") from exc
+
+    payload = response.json()
+    if payload.get("status") != 1:
+        return None
+
+    product_data = payload.get("product") or {}
+    product_name = _extract_product_name(product_data)
+    company_name = _extract_company_name(product_data)
+    open_facts_url = _build_open_facts_url(response.url.host, barcode)
+
+    if not product_name or not company_name:
+        return None
+
+    return await store_product(barcode, product_name, company_name, open_facts_url)

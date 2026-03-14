@@ -19,6 +19,13 @@ products
   company_id
   open_facts_url
 
+open_facts_products
+
+  barcode
+  product_name
+  company_name
+  open_facts_url
+
 reports
 
   id
