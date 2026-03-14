@@ -2,6 +2,7 @@ import csv
 import gzip
 import io
 import os
+import sys
 from collections.abc import Generator
 from urllib.request import Request, urlopen
 
@@ -51,7 +52,20 @@ def _extract_company_name(row: dict[str, str | None]) -> str | None:
     return first_brand or None
 
 
+def _set_csv_field_limit() -> None:
+    limit = sys.maxsize
+
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 10
+
+
 def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], None, None]:
+    _set_csv_field_limit()
+
     request = Request(
         OPEN_FACTS_FOOD_CSV_URL,
         headers={
