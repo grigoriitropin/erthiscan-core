@@ -2,7 +2,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.collector.open_facts import OpenFactsLookupError, fetch_and_store_product, store_product
+from app.collector.open_facts import (
+    OpenFactsLookupError,
+    display_company_name,
+    fetch_and_store_product,
+    store_product,
+)
 from app.models.company import Company
 from app.models.database import ReadSession
 from app.models.open_facts_product import OpenFactsProduct
@@ -31,7 +36,7 @@ def _build_response(product: Product, company: Company) -> dict:
         },
         "company": {
             "id": company.id,
-            "name": company.name,
+            "name": display_company_name(company.name),
             "ethical_score": company.ethical_score,
         },
     }

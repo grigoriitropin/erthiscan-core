@@ -6,6 +6,8 @@ import sys
 from collections.abc import Generator
 from urllib.request import Request, urlopen
 
+from app.collector.open_facts import normalize_company_name, normalize_product_name
+
 OPEN_FACTS_FOOD_CSV_URL = "https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz"
 OpenFactsRow = tuple[str, str, str, str | None]
 OpenFactsBatch = list[OpenFactsRow]
@@ -100,15 +102,11 @@ def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], N
                 )
                 company_name = _extract_company_name(row)
 
-                if not product_name or not company_name:
-                    skipped_rows += 1
-                    continue
-
                 batch.append(
                     (
                         barcode,
-                        product_name,
-                        company_name,
+                        normalize_product_name(product_name),
+                        normalize_company_name(company_name, barcode),
                         f"https://world.openfoodfacts.org/product/{barcode}",
                     )
                 )
