@@ -122,8 +122,8 @@ def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], N
 
 def _sync_main_tables(cur) -> None:
     cur.execute(
-        "INSERT INTO companies (name) "
-        "SELECT DISTINCT company_name "
+        "INSERT INTO companies (name, ethical_score, top_level_report_count, pending_vote_count) "
+        "SELECT DISTINCT company_name, 0.0, 0, 0 "
         "FROM open_facts_products "
         "ON CONFLICT (name) DO NOTHING"
     )
