@@ -135,12 +135,12 @@ def import_open_facts_dump() -> None:
             cur.execute("DROP TABLE IF EXISTS open_facts_products_next")
             cur.execute("DROP TABLE IF EXISTS open_facts_products_stage")
             cur.execute(
-                "CREATE TABLE open_facts_products_stage ("
+                "CREATE TEMP TABLE open_facts_products_stage ("
                 "barcode TEXT NOT NULL, "
                 "product_name TEXT NOT NULL, "
                 "company_name TEXT NOT NULL, "
                 "open_facts_url TEXT"
-                ")"
+                ") ON COMMIT DROP"
             )
             cur.execute("CREATE TABLE open_facts_products_next (LIKE open_facts_products INCLUDING ALL)")
 

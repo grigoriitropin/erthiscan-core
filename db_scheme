@@ -33,7 +33,6 @@ reports
   user_id
   parent_id
   depth
-  type
   text
   sources
   created_at

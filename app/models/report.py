@@ -11,7 +11,6 @@ class Report(Base):
     __table_args__ = (
         CheckConstraint("cardinality(sources) >= 1", name="min_one_source"),
         CheckConstraint("depth IN (0, 1)", name="valid_depth"),
-        CheckConstraint("type IN ('positive', 'negative')", name="valid_type"),
         CheckConstraint(
             "(depth = 0 AND parent_id IS NULL) OR (depth = 1 AND parent_id IS NOT NULL)",
             name="valid_parent_depth",
@@ -23,7 +22,6 @@ class Report(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("reports.id"), nullable=True)
     depth: Mapped[int] = mapped_column(SmallInteger, default=0)
-    type: Mapped[str] = mapped_column(String, nullable=False)
     text: Mapped[str] = mapped_column(String(150), nullable=False)
     sources: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

@@ -26,10 +26,10 @@ def register_vote(company: Company) -> bool:
 
 async def recalculate_company_score(session: AsyncSession, company_id: int) -> Company:
     vote_sum = func.coalesce(func.sum(Vote.value), 0)
-    report_weight = func.greatest(1, 1 + vote_sum)
     report_contribution = case(
-        (Report.type == "positive", report_weight),
-        else_=-report_weight,
+        (vote_sum > 0, vote_sum),
+        (vote_sum < 0, vote_sum),
+        else_=0,
     )
 
     report_scores = (
@@ -39,7 +39,7 @@ async def recalculate_company_score(session: AsyncSession, company_id: int) -> C
         )
         .outerjoin(Vote, Vote.report_id == Report.id)
         .where(Report.company_id == company_id, Report.depth == 0)
-        .group_by(Report.id, Report.type)
+        .group_by(Report.id)
         .subquery()
     )
 
