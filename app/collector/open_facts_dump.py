@@ -120,6 +120,30 @@ def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], N
         yield total_rows, kept_rows, skipped_rows, batch
 
 
+def _sync_main_tables(cur) -> None:
+    cur.execute(
+        "INSERT INTO companies (name) "
+        "SELECT DISTINCT company_name "
+        "FROM open_facts_products "
+        "ON CONFLICT (name) DO NOTHING"
+    )
+
+    cur.execute(
+        "INSERT INTO products (barcode, name, company_id, open_facts_url) "
+        "SELECT "
+        "  open_facts_products.barcode, "
+        "  open_facts_products.product_name, "
+        "  companies.id, "
+        "  open_facts_products.open_facts_url "
+        "FROM open_facts_products "
+        "JOIN companies ON companies.name = open_facts_products.company_name "
+        "ON CONFLICT (barcode) DO UPDATE SET "
+        "  name = EXCLUDED.name, "
+        "  company_id = EXCLUDED.company_id, "
+        "  open_facts_url = EXCLUDED.open_facts_url"
+    )
+
+
 def import_open_facts_dump() -> None:
     import psycopg
 
@@ -159,6 +183,7 @@ def import_open_facts_dump() -> None:
             cur.execute("ALTER TABLE open_facts_products RENAME TO open_facts_products_old")
             cur.execute("ALTER TABLE open_facts_products_next RENAME TO open_facts_products")
             cur.execute("DROP TABLE open_facts_products_old")
+            _sync_main_tables(cur)
 
     print(
         "Open Facts dump import complete: "
