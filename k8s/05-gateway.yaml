@@ -12,3 +12,13 @@ spec:
       allowedRoutes:
         namespaces:
           from: Same
+    - name: websecure
+      port: 8443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: cloudflare-origin-cert
+      allowedRoutes:
+        namespaces:
+          from: Same

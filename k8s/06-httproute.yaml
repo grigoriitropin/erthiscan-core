@@ -8,6 +8,9 @@ spec:
     - name: erthiscan-gateway
       namespace: erthiscan
       sectionName: web
+    - name: erthiscan-gateway
+      namespace: erthiscan
+      sectionName: websecure
   rules:
     - matches:
         - path:
