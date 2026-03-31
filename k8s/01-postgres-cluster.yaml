@@ -1,0 +1,11 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-cluster
+  namespace: erthiscan
+
+spec:
+  instances: 1
+  storage:
+    storageClass: longhorn-single-replica
+    size: 5Gi

@@ -15,10 +15,18 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: import-open-facts
               image: ghcr.io/grigoriitropin/erthiscan-core:latest
               command: ["python", "-m", "app.collector.open_facts_dump"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
               env:
                 - name: DB_USER
                   valueFrom:

@@ -4,7 +4,7 @@ metadata:
   name: erthiscan-core
   namespace: erthiscan
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: erthiscan-core
@@ -13,9 +13,17 @@ spec:
       labels:
         app: erthiscan-core
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: erthiscan-core
           image: ghcr.io/grigoriitropin/erthiscan-core:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 8000
           env:
