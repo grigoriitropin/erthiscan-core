@@ -1,4 +1,4 @@
-name: Build and Push
+name: Build, Push and Deploy
 
 on:
   push:
@@ -26,6 +26,30 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/grigoriitropin/erthiscan-core:latest
             ghcr.io/grigoriitropin/erthiscan-core:${{ github.sha }}
-
+      - name: Generate bot token
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: "erthiscan-infra"
+      - name: Checkout Infra Repository
+        uses: actions/checkout@v4
+        with:
+          repository: grigoriitropin/erthiscan-infra
+          path: erthiscan-infra
+          token: ${{ steps.generate-token.outputs.token }}
+      - name: Update Image Tag in Infra and Push
+        run: |
+          cd erthiscan-infra/k8s
+          
+          kustomize edit set image ghcr.io/grigoriitropin/erthiscan-core=ghcr.io/grigoriitropin/erthiscan-core:${{ github.sha }}
+          
+          git config user.name "erthiscan-updater[bot]"
+          git config user.email "erthiscan-updater[bot]@users.noreply.github.com"
+          
+          git add kustomization.yaml
+          git commit -m "chore: update erthiscan-core image to ${{ github.sha }}"
+          git push origin main
