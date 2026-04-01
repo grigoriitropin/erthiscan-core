@@ -6,4 +6,5 @@ alembic # Database migrations
 psycopg[binary] # Sync PostgreSQL driver for migrations
 httpx # HTTP client for collector lookups
 google-auth # Verify Google ID tokens
+requests # Required by google-auth transport
 PyJWT # Issue signed access tokens
