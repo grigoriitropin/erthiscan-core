@@ -1,5 +1,7 @@
+import asyncio
 import os
 import time
+from functools import partial
 
 import jwt
 from fastapi import APIRouter, HTTPException
@@ -35,8 +37,10 @@ async def auth_google(payload: GoogleAuthRequest):
         raise HTTPException(status_code=500, detail="auth not configured")
 
     try:
-        idinfo = id_token.verify_oauth2_token(
-            payload.token, GoogleRequest(), GOOGLE_WEB_CLIENT_ID
+        loop = asyncio.get_event_loop()
+        idinfo = await loop.run_in_executor(
+            None,
+            partial(id_token.verify_oauth2_token, payload.token, GoogleRequest(), GOOGLE_WEB_CLIENT_ID),
         )
     except ValueError:
         raise HTTPException(status_code=401, detail="invalid google token")
