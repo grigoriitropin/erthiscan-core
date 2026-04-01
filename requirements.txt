@@ -5,3 +5,5 @@ sqlalchemy[asyncio] #ORM and database toolkit
 alembic # Database migrations
 psycopg[binary] # Sync PostgreSQL driver for migrations
 httpx # HTTP client for collector lookups
+google-auth # Verify Google ID tokens
+PyJWT # Issue signed access tokens

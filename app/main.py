@@ -1,12 +1,14 @@
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 
+from app.api.auth import router as auth_router
 from app.api.barcode import router as barcode_router, scan_router
 from app.models.database import ReadSession, WriteSession
 
 # create the fastapi application instance
 app = FastAPI()
 
+app.include_router(auth_router)
 app.include_router(barcode_router)
 app.include_router(scan_router)
 
