@@ -27,7 +27,7 @@ class CompaniesResponse(BaseModel):
 @router.get("", response_model=CompaniesResponse)
 async def list_companies(
     search: str = Query("", max_length=100),
-    sort: str = Query("score_desc", pattern="^(score_desc|score_asc|name_asc|name_desc)$"),
+    sort: str = Query("reports_desc", pattern="^(reports_desc|score_desc|score_asc|name_asc|name_desc)$"),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
 ):
@@ -41,6 +41,8 @@ async def list_companies(
             count_query = count_query.where(Company.name.ilike(pattern))
 
         match sort:
+            case "reports_desc":
+                query = query.order_by(Company.top_level_report_count.desc())
             case "score_desc":
                 query = query.order_by(Company.ethical_score.desc())
             case "score_asc":
