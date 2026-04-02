@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
 
+from app.cache import cache_get, cache_set
 from app.models.company import Company
 from app.models.database import ReadSession
 from app.models.report import Report
@@ -36,6 +37,11 @@ async def list_companies(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
 ):
+    cache_key = f"companies:{search}:{sort}:{page}:{per_page}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return CompaniesResponse(**cached)
+
     async with ReadSession() as session:
         query = select(Company)
         count_query = select(func.count(Company.id))
@@ -64,7 +70,7 @@ async def list_companies(
         result = await session.execute(query)
         companies = result.scalars().all()
 
-    return CompaniesResponse(
+    response = CompaniesResponse(
         items=[
             CompanyItem(
                 id=c.id,
@@ -78,6 +84,8 @@ async def list_companies(
         page=page,
         pages=pages,
     )
+    await cache_set(cache_key, response.model_dump(), ttl=120)
+    return response
 
 
 class ReportItem(BaseModel):
@@ -99,6 +107,11 @@ class CompanyDetail(BaseModel):
 
 @router.get("/{company_id}", response_model=CompanyDetail)
 async def get_company(company_id: int):
+    cache_key = f"company:{company_id}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return CompanyDetail(**cached)
+
     async with ReadSession() as session:
         company = await session.get(Company, company_id)
         if company is None:
@@ -120,7 +133,7 @@ async def get_company(company_id: int):
         )
         rows = result.all()
 
-    return CompanyDetail(
+    response = CompanyDetail(
         id=company.id,
         name=company.name,
         ethical_score=company.ethical_score,
@@ -137,3 +150,5 @@ async def get_company(company_id: int):
             for r in rows
         ],
     )
+    await cache_set(cache_key, response.model_dump(), ttl=120)
+    return response

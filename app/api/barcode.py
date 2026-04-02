@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.cache import cache_get, cache_set
 from app.collector.open_facts import (
     OpenFactsLookupError,
     display_company_name,
@@ -121,9 +122,18 @@ async def collect_product_by_barcode(barcode: str):
 async def scan_barcode(payload: ScanBarcodeRequest):
     _validate_barcode(payload.barcode)
 
+    cache_key = f"scan:{payload.barcode}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     row = await _get_local_product(payload.barcode)
     if row is not None:
         product, company = row
-        return _build_response(product, company)
+        response = _build_response(product, company)
+        await cache_set(cache_key, response, ttl=300)
+        return response
 
-    return await _collect_product(payload.barcode)
+    result = await _collect_product(payload.barcode)
+    await cache_set(cache_key, result, ttl=300)
+    return result

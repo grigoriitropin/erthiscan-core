@@ -1,13 +1,25 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 
 from app.api.auth import router as auth_router
 from app.api.barcode import router as barcode_router, scan_router
 from app.api.companies import router as companies_router
+from app.cache import get_redis
 from app.models.database import ReadSession, WriteSession
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    from app.cache import _redis
+    if _redis is not None:
+        await _redis.aclose()
+
+
 # create the fastapi application instance
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(auth_router)
 app.include_router(barcode_router)

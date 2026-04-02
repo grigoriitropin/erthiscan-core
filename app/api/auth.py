@@ -1,15 +1,18 @@
 import asyncio
 import os
 import time
+import uuid
 from functools import partial
 
 import jwt
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.cache import blacklist_token, is_token_blacklisted
 from app.models.database import WriteSession
 from app.models.user import User
 
@@ -64,7 +67,11 @@ async def auth_google(payload: GoogleAuthRequest):
             await session.refresh(user)
 
     access_token = jwt.encode(
-        {"user_id": user.id, "exp": int(time.time()) + JWT_EXPIRY_SECONDS},
+        {
+            "user_id": user.id,
+            "jti": str(uuid.uuid4()),
+            "exp": int(time.time()) + JWT_EXPIRY_SECONDS,
+        },
         JWT_SECRET,
         algorithm=JWT_ALGORITHM,
     )
@@ -74,3 +81,24 @@ async def auth_google(payload: GoogleAuthRequest):
         user_id=user.id,
         username=user.username,
     )
+
+
+bearer_scheme = HTTPBearer()
+
+
+@router.post("/logout")
+async def logout(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="invalid token")
+
+    jti = payload.get("jti")
+    if jti is None:
+        return {"status": "ok"}
+
+    ttl = int(payload["exp"] - time.time())
+    if ttl > 0:
+        await blacklist_token(jti, ttl)
+
+    return {"status": "ok"}
