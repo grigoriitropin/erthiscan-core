@@ -7,12 +7,14 @@ from app.api.auth import router as auth_router
 from app.api.barcode import router as barcode_router, scan_router
 from app.api.companies import router as companies_router
 from app.cache import get_redis
+from app.events import close_producer
 from app.models.database import ReadSession, WriteSession
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
+    await close_producer()
     from app.cache import _redis
     if _redis is not None:
         await _redis.aclose()

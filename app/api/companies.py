@@ -9,7 +9,6 @@ from app.models.company import Company
 from app.models.database import ReadSession
 from app.models.report import Report
 from app.models.user import User
-from app.models.vote import Vote
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -123,13 +122,12 @@ async def get_company(company_id: int):
                 Report.text,
                 Report.sources,
                 Report.created_at,
+                Report.vote_sum,
                 User.username,
-                func.coalesce(func.sum(Vote.value), 0).label("vote_sum"),
             )
             .join(User, User.id == Report.user_id)
-            .outerjoin(Vote, Vote.report_id == Report.id)
             .where(Report.company_id == company_id, Report.depth == 0)
-            .group_by(Report.id, User.username)
+            .order_by(Report.vote_sum.desc())
         )
         rows = result.all()
 

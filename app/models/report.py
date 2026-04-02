@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, SmallInteger, ForeignKey, DateTime, CheckConstraint
+from sqlalchemy import String, SmallInteger, Integer, ForeignKey, DateTime, CheckConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from datetime import datetime, timezone
 from app.models.database import Base
@@ -24,6 +24,7 @@ class Report(Base):
     depth: Mapped[int] = mapped_column(SmallInteger, default=0)
     text: Mapped[str] = mapped_column(String(150), nullable=False)
     sources: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
+    vote_sum: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
