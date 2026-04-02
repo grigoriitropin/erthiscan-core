@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Query
+from datetime import datetime
+
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
 
 from app.models.company import Company
 from app.models.database import ReadSession
+from app.models.report import Report
+from app.models.user import User
+from app.models.vote import Vote
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -72,4 +77,63 @@ async def list_companies(
         total=total,
         page=page,
         pages=pages,
+    )
+
+
+class ReportItem(BaseModel):
+    id: int
+    text: str
+    sources: list[str]
+    author: str
+    created_at: datetime
+    vote_sum: int
+
+
+class CompanyDetail(BaseModel):
+    id: int
+    name: str
+    ethical_score: float
+    report_count: int
+    reports: list[ReportItem]
+
+
+@router.get("/{company_id}", response_model=CompanyDetail)
+async def get_company(company_id: int):
+    async with ReadSession() as session:
+        company = await session.get(Company, company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="company not found")
+
+        result = await session.execute(
+            select(
+                Report.id,
+                Report.text,
+                Report.sources,
+                Report.created_at,
+                User.username,
+                func.coalesce(func.sum(Vote.value), 0).label("vote_sum"),
+            )
+            .join(User, User.id == Report.user_id)
+            .outerjoin(Vote, Vote.report_id == Report.id)
+            .where(Report.company_id == company_id, Report.depth == 0)
+            .group_by(Report.id, User.username)
+        )
+        rows = result.all()
+
+    return CompanyDetail(
+        id=company.id,
+        name=company.name,
+        ethical_score=company.ethical_score,
+        report_count=company.top_level_report_count,
+        reports=[
+            ReportItem(
+                id=r.id,
+                text=r.text,
+                sources=r.sources,
+                author=r.username,
+                created_at=r.created_at,
+                vote_sum=r.vote_sum,
+            )
+            for r in rows
+        ],
     )
