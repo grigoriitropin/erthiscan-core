@@ -1,5 +1,3 @@
-import re
-
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
@@ -26,16 +24,6 @@ class CompaniesResponse(BaseModel):
     pages: int
 
 
-def _build_search_filters(search: str):
-    terms = search.split()
-    filters = []
-    for term in terms:
-        pattern = re.sub(r"[^a-zA-Z0-9]", "", term)
-        if pattern:
-            filters.append(func.regexp_replace(Company.name, r"[^a-zA-Z0-9]", "", "g").ilike(f"%{pattern}%"))
-    return filters
-
-
 @router.get("", response_model=CompaniesResponse)
 async def list_companies(
     search: str = Query("", max_length=100),
@@ -48,10 +36,9 @@ async def list_companies(
         count_query = select(func.count(Company.id))
 
         if search:
-            filters = _build_search_filters(search)
-            for f in filters:
-                query = query.where(f)
-                count_query = count_query.where(f)
+            pattern = "%" + "%".join(search.split()) + "%"
+            query = query.where(Company.name.ilike(pattern))
+            count_query = count_query.where(Company.name.ilike(pattern))
 
         match sort:
             case "score_desc":
