@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
@@ -12,6 +14,7 @@ class CompanyItem(BaseModel):
     id: int
     name: str
     ethical_score: float
+    has_reports: bool
 
     model_config = {"from_attributes": True}
 
@@ -21,6 +24,16 @@ class CompaniesResponse(BaseModel):
     total: int
     page: int
     pages: int
+
+
+def _build_search_filters(search: str):
+    terms = search.split()
+    filters = []
+    for term in terms:
+        pattern = re.sub(r"[^a-zA-Z0-9]", "", term)
+        if pattern:
+            filters.append(func.regexp_replace(Company.name, r"[^a-zA-Z0-9]", "", "g").ilike(f"%{pattern}%"))
+    return filters
 
 
 @router.get("", response_model=CompaniesResponse)
@@ -35,8 +48,10 @@ async def list_companies(
         count_query = select(func.count(Company.id))
 
         if search:
-            query = query.where(Company.name.ilike(f"%{search}%"))
-            count_query = count_query.where(Company.name.ilike(f"%{search}%"))
+            filters = _build_search_filters(search)
+            for f in filters:
+                query = query.where(f)
+                count_query = count_query.where(f)
 
         match sort:
             case "score_desc":
@@ -56,7 +71,15 @@ async def list_companies(
         companies = result.scalars().all()
 
     return CompaniesResponse(
-        items=[CompanyItem.model_validate(c) for c in companies],
+        items=[
+            CompanyItem(
+                id=c.id,
+                name=c.name,
+                ethical_score=c.ethical_score,
+                has_reports=c.top_level_report_count > 0,
+            )
+            for c in companies
+        ],
         total=total,
         page=page,
         pages=pages,
