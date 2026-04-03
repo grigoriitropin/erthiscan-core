@@ -1,14 +1,16 @@
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 
+from app.api.deps import get_optional_user_id
 from app.cache import cache_get, cache_set
 from app.models.company import Company
 from app.models.database import ReadSession
 from app.models.report import Report
 from app.models.user import User
+from app.models.vote import Vote
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -87,13 +89,27 @@ async def list_companies(
     return response
 
 
+class SubReportItem(BaseModel):
+    id: int
+    text: str
+    sources: list[str]
+    author: str
+    created_at: datetime
+    true_count: int
+    false_count: int
+    user_vote: int | None = None
+
+
 class ReportItem(BaseModel):
     id: int
     text: str
     sources: list[str]
     author: str
     created_at: datetime
-    vote_sum: int
+    ethical_count: int
+    unethical_count: int
+    user_vote: int | None = None
+    sub_reports: list[SubReportItem] = []
 
 
 class CompanyDetail(BaseModel):
@@ -105,8 +121,11 @@ class CompanyDetail(BaseModel):
 
 
 @router.get("/{company_id}", response_model=CompanyDetail)
-async def get_company(company_id: int):
-    cache_key = f"company:{company_id}"
+async def get_company(
+    company_id: int,
+    user_id: int | None = Depends(get_optional_user_id),
+):
+    cache_key = f"company:{company_id}:u:{user_id or 0}"
     cached = await cache_get(cache_key)
     if cached is not None:
         return CompanyDetail(**cached)
@@ -116,20 +135,80 @@ async def get_company(company_id: int):
         if company is None:
             raise HTTPException(status_code=404, detail="company not found")
 
+        # Top-level reports with vote counts
         result = await session.execute(
             select(
                 Report.id,
                 Report.text,
                 Report.sources,
                 Report.created_at,
-                Report.vote_sum,
                 User.username,
+                func.count().filter(Vote.value == 1).label("ethical_count"),
+                func.count().filter(Vote.value == -1).label("unethical_count"),
             )
             .join(User, User.id == Report.user_id)
+            .outerjoin(Vote, Vote.report_id == Report.id)
             .where(Report.company_id == company_id, Report.depth == 0)
+            .group_by(Report.id, User.username)
             .order_by(Report.vote_sum.desc())
         )
         rows = result.all()
+
+        report_ids = [r.id for r in rows]
+
+        # User votes on top-level reports
+        user_votes = {}
+        if user_id and report_ids:
+            uv_result = await session.execute(
+                select(Vote.report_id, Vote.value)
+                .where(Vote.user_id == user_id, Vote.report_id.in_(report_ids))
+            )
+            user_votes = {row.report_id: row.value for row in uv_result.all()}
+
+        # Sub-reports with vote counts
+        sub_reports_by_parent: dict[int, list[SubReportItem]] = {}
+        if report_ids:
+            sub_result = await session.execute(
+                select(
+                    Report.id,
+                    Report.parent_id,
+                    Report.text,
+                    Report.sources,
+                    Report.created_at,
+                    User.username,
+                    func.count().filter(Vote.value == 1).label("true_count"),
+                    func.count().filter(Vote.value == -1).label("false_count"),
+                )
+                .join(User, User.id == Report.user_id)
+                .outerjoin(Vote, Vote.report_id == Report.id)
+                .where(Report.company_id == company_id, Report.depth == 1, Report.parent_id.in_(report_ids))
+                .group_by(Report.id, User.username)
+                .order_by(Report.vote_sum.desc())
+            )
+            sub_rows = sub_result.all()
+
+            sub_ids = [s.id for s in sub_rows]
+            sub_user_votes = {}
+            if user_id and sub_ids:
+                suv_result = await session.execute(
+                    select(Vote.report_id, Vote.value)
+                    .where(Vote.user_id == user_id, Vote.report_id.in_(sub_ids))
+                )
+                sub_user_votes = {row.report_id: row.value for row in suv_result.all()}
+
+            for s in sub_rows:
+                sub_reports_by_parent.setdefault(s.parent_id, []).append(
+                    SubReportItem(
+                        id=s.id,
+                        text=s.text,
+                        sources=s.sources,
+                        author=s.username,
+                        created_at=s.created_at,
+                        true_count=s.true_count,
+                        false_count=s.false_count,
+                        user_vote=sub_user_votes.get(s.id),
+                    )
+                )
 
     response = CompanyDetail(
         id=company.id,
@@ -143,7 +222,10 @@ async def get_company(company_id: int):
                 sources=r.sources,
                 author=r.username,
                 created_at=r.created_at,
-                vote_sum=r.vote_sum,
+                ethical_count=r.ethical_count,
+                unethical_count=r.unethical_count,
+                user_vote=user_votes.get(r.id),
+                sub_reports=sub_reports_by_parent.get(r.id, []),
             )
             for r in rows
         ],

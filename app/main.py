@@ -6,6 +6,7 @@ from sqlalchemy import text
 from app.api.auth import router as auth_router
 from app.api.barcode import router as barcode_router, scan_router
 from app.api.companies import router as companies_router
+from app.api.reports import router as reports_router
 from app.cache import get_redis
 from app.events import close_producer
 from app.models.database import ReadSession, WriteSession
@@ -27,6 +28,7 @@ app.include_router(auth_router)
 app.include_router(barcode_router)
 app.include_router(scan_router)
 app.include_router(companies_router)
+app.include_router(reports_router)
 
 # Define a simple health check endpoint
 @app.get("/health")

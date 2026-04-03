@@ -1,7 +1,7 @@
 import os
 
 import jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.cache import is_token_blacklisted
@@ -10,6 +10,7 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 
 bearer_scheme = HTTPBearer()
+optional_bearer = HTTPBearer(auto_error=False)
 
 
 async def get_current_user_id(
@@ -33,3 +34,22 @@ async def get_current_user_id(
         raise HTTPException(status_code=401, detail="invalid token")
 
     return user_id
+
+
+async def get_optional_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_bearer),
+) -> int | None:
+    if credentials is None:
+        return None
+    try:
+        payload = jwt.decode(
+            credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
+        )
+    except jwt.InvalidTokenError:
+        return None
+
+    jti = payload.get("jti")
+    if jti and await is_token_blacklisted(jti):
+        return None
+
+    return payload.get("user_id")

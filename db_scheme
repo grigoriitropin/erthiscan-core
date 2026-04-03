@@ -35,6 +35,7 @@ reports
   depth
   text
   sources
+  vote_sum
   created_at
 
 votes
