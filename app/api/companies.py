@@ -44,8 +44,9 @@ async def list_companies(
         return CompaniesResponse(**cached)
 
     async with ReadSession() as session:
-        query = select(Company)
-        count_query = select(func.count(Company.id))
+        base_filter = Company.top_level_report_count > 0
+        query = select(Company).where(base_filter)
+        count_query = select(func.count(Company.id)).where(base_filter)
 
         if search:
             pattern = "%" + "%".join(search.split()) + "%"
