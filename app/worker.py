@@ -5,8 +5,8 @@ import os
 
 from aiokafka import AIOKafkaConsumer
 
-from app.cache import cache_delete_pattern
-from app.enricher.company_score import recalculate_company_score, register_vote
+from app.cache import cache_delete_pattern, get_redis
+from app.enricher.company_score import recalculate_company_score
 from app.models.database import WriteSession
 from app.models.report import Report
 from app.models.vote import Vote
@@ -29,12 +29,11 @@ async def handle_vote(data: dict) -> None:
         report = await session.get(Report, data["report_id"])
         report.vote_sum = Report.vote_sum + data["value"]
 
-        from app.models.company import Company
-        company = await session.get(Company, report.company_id)
-        should_recalc = register_vote(company)
-
-        if should_recalc:
+        r = await get_redis()
+        recalc_key = f"score_recalc:{report.company_id}"
+        if not await r.exists(recalc_key):
             await recalculate_company_score(session, report.company_id)
+            await r.set(recalc_key, "1", ex=60)
 
         await session.commit()
 
@@ -59,7 +58,12 @@ async def handle_report(data: dict) -> None:
             from app.models.company import Company
             company = await session.get(Company, data["company_id"])
             company.top_level_report_count += 1
+
+        r = await get_redis()
+        recalc_key = f"score_recalc:{data['company_id']}"
+        if not await r.exists(recalc_key):
             await recalculate_company_score(session, data["company_id"])
+            await r.set(recalc_key, "1", ex=60)
 
         await session.commit()
 

@@ -39,6 +39,7 @@ def _build_response(product: Product, company: Company) -> dict:
             "id": company.id,
             "name": display_company_name(company.name),
             "ethical_score": company.ethical_score,
+            "report_count": company.top_level_report_count,
         },
     }
 

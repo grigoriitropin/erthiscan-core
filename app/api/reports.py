@@ -3,8 +3,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 
 from app.api.deps import get_current_user_id
-from app.cache import cache_delete_pattern
-from app.enricher.company_score import register_vote, recalculate_company_score
+from app.cache import cache_delete_pattern, get_redis
+from app.enricher.company_score import recalculate_company_score
 from app.events import emit_report
 from app.models.company import Company
 from app.models.database import ReadSession, WriteSession
@@ -112,10 +112,11 @@ async def vote_on_report(
             session.add(Vote(report_id=report_id, user_id=user_id, value=payload.value))
             report.vote_sum += payload.value
 
-        company = await session.get(Company, report.company_id)
-        should_recalc = register_vote(company)
-        if should_recalc:
+        r = await get_redis()
+        recalc_key = f"score_recalc:{report.company_id}"
+        if not await r.exists(recalc_key):
             await recalculate_company_score(session, report.company_id)
+            await r.set(recalc_key, "1", ex=60)
 
         await session.commit()
 
