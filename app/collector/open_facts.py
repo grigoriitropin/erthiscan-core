@@ -87,9 +87,9 @@ async def store_product(
             company_insert.on_conflict_do_update(
                 index_elements=[Company.name],
                 set_={"name": company_insert.excluded.name},
-            ).returning(Company.id, Company.name, Company.ethical_score)
+            ).returning(Company.id, Company.name, Company.ethical_score, Company.top_level_report_count)
         )
-        company_id, persisted_company_name, ethical_score = company_result.one()
+        company_id, persisted_company_name, ethical_score, report_count = company_result.one()
 
         product_insert = insert(Product).values(
             barcode=barcode,
@@ -122,6 +122,7 @@ async def store_product(
                 "id": company_id,
                 "name": display_company_name(persisted_company_name),
                 "ethical_score": ethical_score,
+                "report_count": report_count,
             },
         }
 

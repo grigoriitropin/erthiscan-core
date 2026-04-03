@@ -39,6 +39,7 @@ async def handle_vote(data: dict) -> None:
 
     await cache_delete_pattern(f"company:{report.company_id}*")
     await cache_delete_pattern("companies:*")
+    await cache_delete_pattern("scan:*")
     logger.info("vote processed: report=%d user=%d value=%d", data["report_id"], data["user_id"], data["value"])
 
 
@@ -69,6 +70,7 @@ async def handle_report(data: dict) -> None:
 
     await cache_delete_pattern(f"company:{data['company_id']}*")
     await cache_delete_pattern("companies:*")
+    await cache_delete_pattern("scan:*")
     logger.info("report processed: company=%d user=%d", data["company_id"], data["user_id"])
 
 

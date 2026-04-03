@@ -140,6 +140,7 @@ async def vote_on_report(
 
     await cache_delete_pattern(f"company:{report.company_id}*")
     await cache_delete_pattern("companies:*")
+    await cache_delete_pattern("scan:*")
 
     return VoteResponse(
         ethical_count=counts[0],
