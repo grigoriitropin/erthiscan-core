@@ -41,10 +41,6 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
-class RefreshResponse(BaseModel):
-    access_token: str
-
-
 def _make_access_token(user_id: int) -> str:
     return jwt.encode(
         {
@@ -104,6 +100,11 @@ async def auth_google(payload: GoogleAuthRequest):
     )
 
 
+class RefreshResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+
+
 @router.post("/refresh", response_model=RefreshResponse)
 async def refresh(payload: RefreshRequest):
     if WriteSession is None:
@@ -117,9 +118,18 @@ async def refresh(payload: RefreshRequest):
         if rt is None:
             raise HTTPException(status_code=401, detail="invalid refresh token")
 
-        access_token = _make_access_token(rt.user_id)
+        user_id = rt.user_id
 
-    return RefreshResponse(access_token=access_token)
+        # Rotate: delete old, create new
+        await session.delete(rt)
+        new_refresh = secrets.token_urlsafe(64)
+        session.add(RefreshToken(user_id=user_id, token=new_refresh))
+        await session.commit()
+
+    return RefreshResponse(
+        access_token=_make_access_token(user_id),
+        refresh_token=new_refresh,
+    )
 
 
 bearer_scheme = HTTPBearer()
