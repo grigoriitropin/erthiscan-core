@@ -20,6 +20,7 @@ class CompanyItem(BaseModel):
     name: str
     ethical_score: float
     has_reports: bool
+    report_count: int
 
     model_config = {"from_attributes": True}
 
@@ -79,6 +80,7 @@ async def list_companies(
                 name=c.name,
                 ethical_score=c.ethical_score,
                 has_reports=c.top_level_report_count > 0,
+                report_count=c.top_level_report_count,
             )
             for c in companies
         ],
