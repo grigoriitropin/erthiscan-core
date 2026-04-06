@@ -12,10 +12,10 @@ class Base(DeclarativeBase):
     pass
 
 # Engine for writing (primary)
-write_engine = create_async_engine(WRITE_URL) if WRITE_URL else None
+write_engine = create_async_engine(WRITE_URL, pool_pre_ping=True) if WRITE_URL else None
 
 # Engine for reading (replicas)
-read_engine = create_async_engine(READ_URL) if READ_URL else None
+read_engine = create_async_engine(READ_URL, pool_pre_ping=True) if READ_URL else None
 
 # Session factories
 WriteSession = (
