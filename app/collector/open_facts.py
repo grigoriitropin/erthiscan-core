@@ -138,6 +138,8 @@ async def fetch_and_store_product(barcode: str) -> dict | None:
                     "Accept": "application/json",
                 },
             )
+            if response.status_code == 404:
+                return None
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise OpenFactsLookupError("open facts request failed") from exc
