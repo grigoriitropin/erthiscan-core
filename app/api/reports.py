@@ -43,11 +43,25 @@ class UserReportItem(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserChallengeItem(BaseModel):
+    id: int
+    parent_id: int
+    company_id: int
+    company_name: str
+    text: str
+    vote_sum: int
+    created_at: str
+
+    model_config = {"from_attributes": True}
+
+
 class UserProfile(BaseModel):
     user_id: int
     username: str
     report_count: int
+    challenge_count: int
     reports: list[UserReportItem]
+    challenges: list[UserChallengeItem]
 
 
 @router.post("", status_code=202)
@@ -156,7 +170,7 @@ async def get_my_profile(user_id: int = Depends(get_current_user_id)):
         if user is None:
             raise HTTPException(status_code=404, detail="user not found")
 
-        result = await session.execute(
+        reports_result = await session.execute(
             select(
                 Report.id,
                 Report.company_id,
@@ -169,12 +183,29 @@ async def get_my_profile(user_id: int = Depends(get_current_user_id)):
             .where(Report.user_id == user_id, Report.depth == 0)
             .order_by(Report.created_at.desc())
         )
-        rows = result.all()
+        report_rows = reports_result.all()
+
+        challenges_result = await session.execute(
+            select(
+                Report.id,
+                Report.parent_id,
+                Report.company_id,
+                Company.name.label("company_name"),
+                Report.text,
+                Report.vote_sum,
+                Report.created_at,
+            )
+            .join(Company, Company.id == Report.company_id)
+            .where(Report.user_id == user_id, Report.depth == 1)
+            .order_by(Report.created_at.desc())
+        )
+        challenge_rows = challenges_result.all()
 
     return UserProfile(
         user_id=user.id,
         username=user.username,
-        report_count=len(rows),
+        report_count=len(report_rows),
+        challenge_count=len(challenge_rows),
         reports=[
             UserReportItem(
                 id=r.id,
@@ -184,6 +215,18 @@ async def get_my_profile(user_id: int = Depends(get_current_user_id)):
                 vote_sum=r.vote_sum,
                 created_at=str(r.created_at),
             )
-            for r in rows
+            for r in report_rows
+        ],
+        challenges=[
+            UserChallengeItem(
+                id=c.id,
+                parent_id=c.parent_id,
+                company_id=c.company_id,
+                company_name=c.company_name,
+                text=c.text,
+                vote_sum=c.vote_sum,
+                created_at=str(c.created_at),
+            )
+            for c in challenge_rows
         ],
     )
