@@ -156,7 +156,7 @@ async def get_company(
             .outerjoin(Vote, Vote.report_id == Report.id)
             .where(Report.company_id == company_id, Report.depth == 0)
             .group_by(Report.id, User.username)
-            .order_by(Report.vote_sum.desc())
+            .order_by(Report.created_at.desc())
         )
         rows = result.all()
 
