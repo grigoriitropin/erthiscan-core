@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 
 from app.api.deps import get_current_user_id
 from app.cache import cache_delete_pattern, get_redis
@@ -22,6 +22,11 @@ class CreateReportRequest(BaseModel):
     parent_id: int | None = None
 
 
+class UpdateReportRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=150)
+    sources: list[str] = Field(min_length=1)
+
+
 class VoteRequest(BaseModel):
     value: int = Field(ge=-1, le=1)
 
@@ -37,6 +42,7 @@ class UserReportItem(BaseModel):
     company_id: int
     company_name: str
     text: str
+    sources: list[str]
     vote_sum: int
     created_at: str
 
@@ -49,6 +55,7 @@ class UserChallengeItem(BaseModel):
     company_id: int
     company_name: str
     text: str
+    sources: list[str]
     vote_sum: int
     created_at: str
 
@@ -90,6 +97,68 @@ async def create_report(
         depth=depth,
     )
     return {"status": "accepted"}
+
+
+@router.patch("/{report_id}")
+async def update_report(
+    report_id: int,
+    payload: UpdateReportRequest,
+    user_id: int = Depends(get_current_user_id),
+):
+    async with WriteSession() as session:
+        report = await session.get(Report, report_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="report not found")
+        if report.user_id != user_id:
+            raise HTTPException(status_code=403, detail="not your report")
+
+        report.text = payload.text
+        report.sources = payload.sources
+        company_id = report.company_id
+        await session.commit()
+
+    await cache_delete_pattern(f"company:{company_id}*")
+    await cache_delete_pattern("companies:*")
+    await cache_delete_pattern("scan:*")
+    return {"status": "updated"}
+
+
+@router.delete("/{report_id}")
+async def delete_report(
+    report_id: int,
+    user_id: int = Depends(get_current_user_id),
+):
+    async with WriteSession() as session:
+        report = await session.get(Report, report_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="report not found")
+        if report.user_id != user_id:
+            raise HTTPException(status_code=403, detail="not your report")
+
+        company_id = report.company_id
+        was_top_level = report.depth == 0
+
+        if was_top_level:
+            # Find sub-report ids first, then delete their votes and the sub-reports
+            sub_ids_result = await session.execute(
+                select(Report.id).where(Report.parent_id == report_id)
+            )
+            sub_ids = [row[0] for row in sub_ids_result.all()]
+            if sub_ids:
+                await session.execute(delete(Vote).where(Vote.report_id.in_(sub_ids)))
+                await session.execute(delete(Report).where(Report.id.in_(sub_ids)))
+
+        await session.execute(delete(Vote).where(Vote.report_id == report_id))
+        await session.delete(report)
+        await session.flush()
+
+        await recalculate_company_score(session, company_id)
+        await session.commit()
+
+    await cache_delete_pattern(f"company:{company_id}*")
+    await cache_delete_pattern("companies:*")
+    await cache_delete_pattern("scan:*")
+    return {"status": "deleted"}
 
 
 @router.post("/{report_id}/vote", response_model=VoteResponse)
@@ -176,6 +245,7 @@ async def get_my_profile(user_id: int = Depends(get_current_user_id)):
                 Report.company_id,
                 Company.name.label("company_name"),
                 Report.text,
+                Report.sources,
                 Report.vote_sum,
                 Report.created_at,
             )
@@ -192,6 +262,7 @@ async def get_my_profile(user_id: int = Depends(get_current_user_id)):
                 Report.company_id,
                 Company.name.label("company_name"),
                 Report.text,
+                Report.sources,
                 Report.vote_sum,
                 Report.created_at,
             )
@@ -212,6 +283,7 @@ async def get_my_profile(user_id: int = Depends(get_current_user_id)):
                 company_id=r.company_id,
                 company_name=r.company_name,
                 text=r.text,
+                sources=r.sources,
                 vote_sum=r.vote_sum,
                 created_at=str(r.created_at),
             )
@@ -224,6 +296,7 @@ async def get_my_profile(user_id: int = Depends(get_current_user_id)):
                 company_id=c.company_id,
                 company_name=c.company_name,
                 text=c.text,
+                sources=c.sources,
                 vote_sum=c.vote_sum,
                 created_at=str(c.created_at),
             )

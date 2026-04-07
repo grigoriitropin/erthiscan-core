@@ -94,6 +94,7 @@ async def list_companies(
 
 class SubReportItem(BaseModel):
     id: int
+    user_id: int
     text: str
     sources: list[str]
     author: str
@@ -105,6 +106,7 @@ class SubReportItem(BaseModel):
 
 class ReportItem(BaseModel):
     id: int
+    user_id: int
     text: str
     sources: list[str]
     author: str
@@ -142,6 +144,7 @@ async def get_company(
         result = await session.execute(
             select(
                 Report.id,
+                Report.user_id,
                 Report.text,
                 Report.sources,
                 Report.created_at,
@@ -174,6 +177,7 @@ async def get_company(
             sub_result = await session.execute(
                 select(
                     Report.id,
+                    Report.user_id,
                     Report.parent_id,
                     Report.text,
                     Report.sources,
@@ -203,6 +207,7 @@ async def get_company(
                 sub_reports_by_parent.setdefault(s.parent_id, []).append(
                     SubReportItem(
                         id=s.id,
+                        user_id=s.user_id,
                         text=s.text,
                         sources=s.sources,
                         author=s.username,
@@ -221,6 +226,7 @@ async def get_company(
         reports=[
             ReportItem(
                 id=r.id,
+                user_id=r.user_id,
                 text=r.text,
                 sources=r.sources,
                 author=r.username,
