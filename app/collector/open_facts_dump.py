@@ -122,20 +122,25 @@ def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], N
 
 
 def _sync_main_tables(cur) -> None:
-    # Get distinct company names
+    cur.execute(
+        "CREATE TEMP TABLE companies_stage ("
+        "name TEXT NOT NULL, "
+        "name_normalized TEXT NOT NULL"
+        ") ON COMMIT DROP"
+    )
+
     cur.execute("SELECT DISTINCT company_name FROM open_facts_products")
-    companies_batch = [
-        (name, python_normalize_name(name), 0.0, 0, 0)
-        for (name,) in cur.fetchall()
-    ]
-    
-    if companies_batch:
-        cur.executemany(
-            "INSERT INTO companies (name, name_normalized, ethical_score, top_level_report_count, pending_vote_count) "
-            "VALUES (%s, %s, %s, %s, %s) "
-            "ON CONFLICT (name) DO UPDATE SET name_normalized = EXCLUDED.name_normalized",
-            companies_batch
-        )
+    rows = cur.fetchall()
+
+    with cur.copy("COPY companies_stage (name, name_normalized) FROM STDIN") as copy:
+        for (name,) in rows:
+            copy.write_row((name, python_normalize_name(name)))
+
+    cur.execute(
+        "INSERT INTO companies (name, name_normalized, ethical_score, top_level_report_count, pending_vote_count) "
+        "SELECT name, name_normalized, 0.0, 0, 0 FROM companies_stage "
+        "ON CONFLICT (name) DO UPDATE SET name_normalized = EXCLUDED.name_normalized"
+    )
 
     cur.execute(
         "INSERT INTO products (barcode, name, company_id, open_facts_url) "
