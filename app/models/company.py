@@ -8,6 +8,7 @@ class Company(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    name_normalized: Mapped[str | None] = mapped_column(String, nullable=True)
     ethical_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     top_level_report_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     pending_vote_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

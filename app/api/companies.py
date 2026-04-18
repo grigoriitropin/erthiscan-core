@@ -50,7 +50,8 @@ async def list_companies(
         count_query = select(func.count(Company.id)).where(base_filter)
 
         if search:
-            similarity = func.similarity(func.unaccent(Company.name), func.unaccent(search))
+            from app.collector.utils import python_normalize_name
+            similarity = func.similarity(Company.name_normalized, python_normalize_name(search))
             query = query.where(similarity > 0.15)
             count_query = count_query.where(similarity > 0.15)
 

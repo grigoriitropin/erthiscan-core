@@ -1,6 +1,7 @@
 import httpx
 from sqlalchemy.dialects.postgresql import insert
 
+from app.collector.utils import python_normalize_name
 from app.models.company import Company
 from app.models.database import WriteSession
 from app.models.product import Product
@@ -80,13 +81,20 @@ async def store_product(
 
     stored_product_name = normalize_product_name(product_name)
     stored_company_name = normalize_company_name(company_name, barcode)
+    normalized_search_name = python_normalize_name(stored_company_name)
 
     async with WriteSession() as session:
-        company_insert = insert(Company).values(name=stored_company_name)
+        company_insert = insert(Company).values(
+            name=stored_company_name,
+            name_normalized=normalized_search_name,
+        )
         company_result = await session.execute(
             company_insert.on_conflict_do_update(
                 index_elements=[Company.name],
-                set_={"name": company_insert.excluded.name},
+                set_={
+                    "name": company_insert.excluded.name,
+                    "name_normalized": company_insert.excluded.name_normalized,
+                },
             ).returning(Company.id, Company.name, Company.ethical_score, Company.top_level_report_count)
         )
         company_id, persisted_company_name, ethical_score, report_count = company_result.one()

@@ -7,6 +7,7 @@ from collections.abc import Generator
 from urllib.request import Request, urlopen
 
 from app.collector.open_facts import normalize_company_name, normalize_product_name
+from app.collector.utils import python_normalize_name
 
 OPEN_FACTS_FOOD_CSV_URL = "https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz"
 OpenFactsRow = tuple[str, str, str, str | None]
@@ -121,12 +122,20 @@ def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], N
 
 
 def _sync_main_tables(cur) -> None:
-    cur.execute(
-        "INSERT INTO companies (name, ethical_score, top_level_report_count, pending_vote_count) "
-        "SELECT DISTINCT company_name, 0.0, 0, 0 "
-        "FROM open_facts_products "
-        "ON CONFLICT (name) DO NOTHING"
-    )
+    # Get distinct company names
+    cur.execute("SELECT DISTINCT company_name FROM open_facts_products")
+    companies_batch = [
+        (name, python_normalize_name(name), 0.0, 0, 0)
+        for (name,) in cur.fetchall()
+    ]
+    
+    if companies_batch:
+        cur.executemany(
+            "INSERT INTO companies (name, name_normalized, ethical_score, top_level_report_count, pending_vote_count) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (name) DO UPDATE SET name_normalized = EXCLUDED.name_normalized",
+            companies_batch
+        )
 
     cur.execute(
         "INSERT INTO products (barcode, name, company_id, open_facts_url) "
@@ -185,7 +194,11 @@ def import_open_facts_dump() -> None:
             cur.execute("DROP TABLE open_facts_products_old")
             _sync_main_tables(cur)
 
-        conn.execute("VACUUM products")
+    # VACUUM cannot run inside a transaction block.
+    # psycopg defaults to autocommit=False, so we must connect with autocommit=True.
+    with psycopg.connect(db_url, autocommit=True) as conn_vac:
+        conn_vac.execute("VACUUM (ANALYZE) products")
+        conn_vac.execute("VACUUM (ANALYZE) companies")
 
     print(
         "Open Facts dump import complete: "
