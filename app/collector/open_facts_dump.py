@@ -10,8 +10,8 @@ from app.collector.open_facts import normalize_company_name, normalize_product_n
 from app.collector.utils import python_normalize_name
 
 OPEN_FACTS_FOOD_CSV_URL = "https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz"
-OpenFactsRow = tuple[str, str, str, str, str | None]
-OpenFactsBatch = list[OpenFactsRow]
+OpenFactsProductRow = tuple[str, str, str, str | None]  # barcode, product_name, company_name, open_facts_url
+OpenFactsProductBatch = list[OpenFactsProductRow]
 
 
 def _get_sync_db_url() -> str:
@@ -66,7 +66,9 @@ def _set_csv_field_limit() -> None:
             limit //= 10
 
 
-def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], None, None]:
+def _iter_open_facts_rows(
+    companies_normalized: dict[str, str]
+) -> Generator[tuple[int, int, int, OpenFactsProductBatch], None, None]:
     _set_csv_field_limit()
 
     request = Request(
@@ -80,7 +82,7 @@ def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], N
     total_rows = 0
     kept_rows = 0
     skipped_rows = 0
-    batch: OpenFactsBatch = []
+    batch: OpenFactsProductBatch = []
 
     with urlopen(request, timeout=300) as response:
         with gzip.GzipFile(fileobj=response) as compressed_stream:
@@ -104,12 +106,13 @@ def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], N
                 company_name = _extract_company_name(row)
 
                 normalized_company_name = normalize_company_name(company_name, barcode)
+                if normalized_company_name not in companies_normalized:
+                    companies_normalized[normalized_company_name] = python_normalize_name(normalized_company_name)
                 batch.append(
                     (
                         barcode,
                         normalize_product_name(product_name),
                         normalized_company_name,
-                        python_normalize_name(normalized_company_name),
                         f"https://world.openfoodfacts.org/product/{barcode}",
                     )
                 )
@@ -130,38 +133,54 @@ def import_open_facts_dump() -> None:
     total_rows = 0
     kept_rows = 0
     skipped_rows = 0
+    companies_normalized: dict[str, str] = {}  # company_name -> name_normalized
 
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
-            # Create temporary staging table
+            # Create two temporary staging tables
             cur.execute("""
-                CREATE TEMP TABLE import_stage (
+                CREATE TEMP TABLE stage_products (
                     barcode TEXT NOT NULL,
                     product_name TEXT NOT NULL,
                     company_name TEXT NOT NULL,
-                    company_name_normalized TEXT NOT NULL,
                     open_facts_url TEXT
                 ) ON COMMIT DROP
             """)
+            cur.execute("""
+                CREATE TEMP TABLE stage_companies (
+                    name TEXT NOT NULL,
+                    name_normalized TEXT NOT NULL
+                ) ON COMMIT DROP
+            """)
 
-            # Stream CSV rows directly into staging table
+            # Stream CSV rows into stage_products, collecting unique companies
             with cur.copy(
-                "COPY import_stage (barcode, product_name, company_name, company_name_normalized, open_facts_url) FROM STDIN"
+                "COPY stage_products (barcode, product_name, company_name, open_facts_url) FROM STDIN"
             ) as copy:
-                for total_rows, kept_rows, skipped_rows, batch in _iter_open_facts_rows():
+                for total_rows, kept_rows, skipped_rows, batch in _iter_open_facts_rows(companies_normalized):
                     for row in batch:
                         copy.write_row(row)
+
+            # Load unique companies into stage_companies
+            with cur.copy(
+                "COPY stage_companies (name, name_normalized) FROM STDIN"
+            ) as copy:
+                for company_name, name_normalized in companies_normalized.items():
+                    copy.write_row((company_name, name_normalized))
+
+            # Increase work_mem for the heavy upserts
+            cur.execute("SET LOCAL work_mem = '128MB'")
 
             # Upsert companies (only insert new ones, update name_normalized if changed)
             cur.execute("""
                 INSERT INTO companies (name, name_normalized, ethical_score, top_level_report_count, pending_vote_count)
-                SELECT DISTINCT
-                    company_name,
-                    company_name_normalized,
+                SELECT
+                    name,
+                    name_normalized,
                     0.0,
                     0,
                     0
-                FROM import_stage
+                FROM stage_companies
                 ON CONFLICT (name) DO UPDATE SET
                     name_normalized = EXCLUDED.name_normalized
                 WHERE companies.name_normalized IS DISTINCT FROM EXCLUDED.name_normalized
@@ -171,12 +190,12 @@ def import_open_facts_dump() -> None:
             cur.execute("""
                 INSERT INTO products (barcode, name, company_id, open_facts_url)
                 SELECT
-                    stage.barcode,
-                    stage.product_name,
-                    companies.id,
-                    stage.open_facts_url
-                FROM import_stage stage
-                JOIN companies ON companies.name = stage.company_name
+                    sp.barcode,
+                    sp.product_name,
+                    c.id,
+                    sp.open_facts_url
+                FROM stage_products sp
+                JOIN companies c ON c.name = sp.company_name
                 ON CONFLICT (barcode) DO UPDATE SET
                     name = EXCLUDED.name,
                     company_id = EXCLUDED.company_id,
