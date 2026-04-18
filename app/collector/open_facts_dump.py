@@ -10,7 +10,7 @@ from app.collector.open_facts import normalize_company_name, normalize_product_n
 from app.collector.utils import python_normalize_name
 
 OPEN_FACTS_FOOD_CSV_URL = "https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz"
-OpenFactsRow = tuple[str, str, str, str | None]
+OpenFactsRow = tuple[str, str, str, str, str | None]
 OpenFactsBatch = list[OpenFactsRow]
 
 
@@ -103,11 +103,13 @@ def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], N
                 )
                 company_name = _extract_company_name(row)
 
+                normalized_company_name = normalize_company_name(company_name, barcode)
                 batch.append(
                     (
                         barcode,
                         normalize_product_name(product_name),
-                        normalize_company_name(company_name, barcode),
+                        normalized_company_name,
+                        python_normalize_name(normalized_company_name),
                         f"https://world.openfoodfacts.org/product/{barcode}",
                     )
                 )
@@ -121,43 +123,6 @@ def _iter_open_facts_rows() -> Generator[tuple[int, int, int, OpenFactsBatch], N
         yield total_rows, kept_rows, skipped_rows, batch
 
 
-def _sync_main_tables(cur) -> None:
-    cur.execute(
-        "CREATE TEMP TABLE companies_stage ("
-        "name TEXT NOT NULL, "
-        "name_normalized TEXT NOT NULL"
-        ") ON COMMIT DROP"
-    )
-
-    cur.execute("SELECT DISTINCT company_name FROM open_facts_products")
-    rows = cur.fetchall()
-
-    with cur.copy("COPY companies_stage (name, name_normalized) FROM STDIN") as copy:
-        for (name,) in rows:
-            copy.write_row((name, python_normalize_name(name)))
-
-    cur.execute(
-        "INSERT INTO companies (name, name_normalized, ethical_score, top_level_report_count, pending_vote_count) "
-        "SELECT name, name_normalized, 0.0, 0, 0 FROM companies_stage "
-        "ON CONFLICT (name) DO UPDATE SET name_normalized = EXCLUDED.name_normalized"
-    )
-
-    cur.execute(
-        "INSERT INTO products (barcode, name, company_id, open_facts_url) "
-        "SELECT "
-        "  open_facts_products.barcode, "
-        "  open_facts_products.product_name, "
-        "  companies.id, "
-        "  open_facts_products.open_facts_url "
-        "FROM open_facts_products "
-        "JOIN companies ON companies.name = open_facts_products.company_name "
-        "ON CONFLICT (barcode) DO UPDATE SET "
-        "  name = EXCLUDED.name, "
-        "  company_id = EXCLUDED.company_id, "
-        "  open_facts_url = EXCLUDED.open_facts_url"
-    )
-
-
 def import_open_facts_dump() -> None:
     import psycopg
 
@@ -168,42 +133,66 @@ def import_open_facts_dump() -> None:
 
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
-            cur.execute("DROP TABLE IF EXISTS open_facts_products_next")
-            cur.execute("DROP TABLE IF EXISTS open_facts_products_stage")
-            cur.execute(
-                "CREATE TEMP TABLE open_facts_products_stage ("
-                "barcode TEXT NOT NULL, "
-                "product_name TEXT NOT NULL, "
-                "company_name TEXT NOT NULL, "
-                "open_facts_url TEXT"
-                ") ON COMMIT DROP"
-            )
-            cur.execute("CREATE TABLE open_facts_products_next (LIKE open_facts_products INCLUDING ALL)")
+            # Create temporary staging table
+            cur.execute("""
+                CREATE TEMP TABLE import_stage (
+                    barcode TEXT NOT NULL,
+                    product_name TEXT NOT NULL,
+                    company_name TEXT NOT NULL,
+                    company_name_normalized TEXT NOT NULL,
+                    open_facts_url TEXT
+                ) ON COMMIT DROP
+            """)
 
+            # Stream CSV rows directly into staging table
             with cur.copy(
-                "COPY open_facts_products_stage (barcode, product_name, company_name, open_facts_url) FROM STDIN"
+                "COPY import_stage (barcode, product_name, company_name, company_name_normalized, open_facts_url) FROM STDIN"
             ) as copy:
                 for total_rows, kept_rows, skipped_rows, batch in _iter_open_facts_rows():
                     for row in batch:
                         copy.write_row(row)
 
-            cur.execute(
-                "INSERT INTO open_facts_products_next (barcode, product_name, company_name, open_facts_url) "
-                "SELECT DISTINCT ON (barcode) barcode, product_name, company_name, open_facts_url "
-                "FROM open_facts_products_stage "
-                "ORDER BY barcode"
-            )
+            # Upsert companies (only insert new ones, update name_normalized if changed)
+            cur.execute("""
+                INSERT INTO companies (name, name_normalized, ethical_score, top_level_report_count, pending_vote_count)
+                SELECT DISTINCT
+                    company_name,
+                    company_name_normalized,
+                    0.0,
+                    0,
+                    0
+                FROM import_stage
+                ON CONFLICT (name) DO UPDATE SET
+                    name_normalized = EXCLUDED.name_normalized
+                WHERE companies.name_normalized IS DISTINCT FROM EXCLUDED.name_normalized
+            """)
 
-            cur.execute("ALTER TABLE open_facts_products RENAME TO open_facts_products_old")
-            cur.execute("ALTER TABLE open_facts_products_next RENAME TO open_facts_products")
-            cur.execute("DROP TABLE open_facts_products_old")
-            _sync_main_tables(cur)
+            # Upsert products (join with companies to get company_id)
+            cur.execute("""
+                INSERT INTO products (barcode, name, company_id, open_facts_url)
+                SELECT
+                    stage.barcode,
+                    stage.product_name,
+                    companies.id,
+                    stage.open_facts_url
+                FROM import_stage stage
+                JOIN companies ON companies.name = stage.company_name
+                ON CONFLICT (barcode) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    company_id = EXCLUDED.company_id,
+                    open_facts_url = EXCLUDED.open_facts_url
+                WHERE products.name IS DISTINCT FROM EXCLUDED.name
+                   OR products.company_id IS DISTINCT FROM EXCLUDED.company_id
+                   OR products.open_facts_url IS DISTINCT FROM EXCLUDED.open_facts_url
+            """)
 
     # VACUUM cannot run inside a transaction block.
     # psycopg defaults to autocommit=False, so we must connect with autocommit=True.
     with psycopg.connect(db_url, autocommit=True) as conn_vac:
         conn_vac.execute("VACUUM (ANALYZE) products")
         conn_vac.execute("VACUUM (ANALYZE) companies")
+        # CHECKPOINT after mass updates to help PostgreSQL manage WAL
+        conn_vac.execute("CHECKPOINT")
 
     print(
         "Open Facts dump import complete: "

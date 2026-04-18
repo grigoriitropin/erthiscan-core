@@ -3,15 +3,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.cache import cache_get, cache_set
-from app.collector.open_facts import (
-    OpenFactsLookupError,
-    display_company_name,
-    fetch_and_store_product,
-    store_product,
-)
+from app.collector.open_facts import display_company_name
 from app.models.company import Company
 from app.models.database import ReadSession
-from app.models.open_facts_product import OpenFactsProduct
 from app.models.product import Product
 
 router = APIRouter(prefix="/barcode", tags=["barcode"])
@@ -63,36 +57,7 @@ async def _get_local_product(barcode: str) -> tuple[Product, Company] | None:
     return product, company
 
 
-async def _get_imported_product(barcode: str) -> OpenFactsProduct | None:
-    if ReadSession is None:
-        raise HTTPException(status_code=500, detail="read database is not configured")
 
-    async with ReadSession() as session:
-        result = await session.execute(
-            select(OpenFactsProduct).where(OpenFactsProduct.barcode == barcode)
-        )
-        return result.scalar_one_or_none()
-
-
-async def _collect_product(barcode: str) -> dict:
-    imported_product = await _get_imported_product(barcode)
-    if imported_product is not None:
-        return await store_product(
-            barcode=imported_product.barcode,
-            product_name=imported_product.product_name,
-            company_name=imported_product.company_name,
-            open_facts_url=imported_product.open_facts_url,
-        )
-
-    try:
-        collected_product = await fetch_and_store_product(barcode)
-    except OpenFactsLookupError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    if collected_product is None:
-        raise HTTPException(status_code=404, detail="product not found")
-
-    return collected_product
 
 
 @router.get("/{barcode}")
@@ -112,11 +77,11 @@ async def collect_product_by_barcode(barcode: str):
     _validate_barcode(barcode)
 
     row = await _get_local_product(barcode)
-    if row is not None:
-        product, company = row
-        return _build_response(product, company)
+    if row is None:
+        raise HTTPException(status_code=404, detail="product not found")
 
-    return await _collect_product(barcode)
+    product, company = row
+    return _build_response(product, company)
 
 
 @scan_router.post("/scan/barcode")
@@ -135,6 +100,4 @@ async def scan_barcode(payload: ScanBarcodeRequest):
         await cache_set(cache_key, response, ttl=300)
         return response
 
-    result = await _collect_product(payload.barcode)
-    await cache_set(cache_key, result, ttl=300)
-    return result
+    raise HTTPException(status_code=404, detail="product not found")
