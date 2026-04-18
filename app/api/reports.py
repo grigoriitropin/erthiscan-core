@@ -76,6 +76,11 @@ async def create_report(
     payload: CreateReportRequest,
     user_id: int = Depends(get_current_user_id),
 ):
+    async with ReadSession() as session:
+        company = await session.get(Company, payload.company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="company not found")
+
     depth = 0
     if payload.parent_id is not None:
         async with ReadSession() as session:

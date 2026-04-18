@@ -185,6 +185,8 @@ def import_open_facts_dump() -> None:
             cur.execute("DROP TABLE open_facts_products_old")
             _sync_main_tables(cur)
 
+        conn.execute("VACUUM products")
+
     print(
         "Open Facts dump import complete: "
         f"total_rows={total_rows} kept_rows={kept_rows} skipped_rows={skipped_rows}"

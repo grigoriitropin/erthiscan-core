@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, case, text
 
 from app.api.deps import get_optional_user_id
 from app.cache import cache_get, cache_set
@@ -50,9 +50,9 @@ async def list_companies(
         count_query = select(func.count(Company.id)).where(base_filter)
 
         if search:
-            pattern = "%" + "%".join(search.split()) + "%"
-            query = query.where(Company.name.ilike(pattern))
-            count_query = count_query.where(Company.name.ilike(pattern))
+            similarity = func.similarity(func.unaccent(Company.name), func.unaccent(search))
+            query = query.where(similarity > 0.15)
+            count_query = count_query.where(similarity > 0.15)
 
         match sort:
             case "reports_desc":
