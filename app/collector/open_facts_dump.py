@@ -217,8 +217,6 @@ def import_open_facts_dump() -> None:
     with psycopg.connect(db_url, autocommit=True) as conn_vac:
         conn_vac.execute("VACUUM (ANALYZE) products")
         conn_vac.execute("VACUUM (ANALYZE) companies")
-        # CHECKPOINT after mass updates to help PostgreSQL manage WAL
-        conn_vac.execute("CHECKPOINT")
 
     print(
         "Open Facts dump import complete: "
