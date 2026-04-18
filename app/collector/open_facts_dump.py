@@ -67,7 +67,8 @@ def _set_csv_field_limit() -> None:
 
 
 def _iter_open_facts_rows(
-    companies_normalized: dict[str, str]
+    companies_normalized: dict[str, str],
+    seen_barcodes: set[int]
 ) -> Generator[tuple[int, int, int, OpenFactsProductBatch], None, None]:
     _set_csv_field_limit()
 
@@ -96,6 +97,11 @@ def _iter_open_facts_rows(
                 if len(barcode) != 13 or not barcode.isdigit():
                     skipped_rows += 1
                     continue
+                
+                barcode_key = int(barcode)
+                if barcode_key in seen_barcodes:
+                    continue
+                seen_barcodes.add(barcode_key)
 
                 product_name = _pick_first_value(
                     row.get("product_name_en"),
@@ -134,6 +140,7 @@ def import_open_facts_dump() -> None:
     kept_rows = 0
     skipped_rows = 0
     companies_normalized: dict[str, str] = {}  # company_name -> name_normalized
+    seen_barcodes: set[int] = set()
 
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
@@ -157,7 +164,7 @@ def import_open_facts_dump() -> None:
             with cur.copy(
                 "COPY stage_products (barcode, product_name, company_name, open_facts_url) FROM STDIN"
             ) as copy:
-                for total_rows, kept_rows, skipped_rows, batch in _iter_open_facts_rows(companies_normalized):
+                for total_rows, kept_rows, skipped_rows, batch in _iter_open_facts_rows(companies_normalized, seen_barcodes):
                     for row in batch:
                         copy.write_row(row)
 
