@@ -10,3 +10,4 @@ requests # Required by google-auth transport
 PyJWT # Issue signed access tokens
 redis[hiredis] # Redis client with C parser for caching and JWT blacklist
 aiokafka # Async Kafka client for event processing
+unidecode # Transliterate non-ASCII text to ASCII for cross-script search
