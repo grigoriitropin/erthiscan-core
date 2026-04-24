@@ -23,7 +23,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.14"
-      - run: uv venv
+      - run: rm -rf .venv && uv venv
       - run: uv pip install -r requirements.txt
       - run: uv pip install pytest pytest-asyncio httpx ruff mypy types-requests
       - run: uv run ruff check app/
