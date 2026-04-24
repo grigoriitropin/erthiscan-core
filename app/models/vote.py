@@ -1,6 +1,8 @@
+from sqlalchemy import CheckConstraint, ForeignKey, SmallInteger, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import SmallInteger, ForeignKey, UniqueConstraint, CheckConstraint
+
 from app.models.database import Base
+
 
 class Vote(Base):
     __tablename__ = "votes"

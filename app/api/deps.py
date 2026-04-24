@@ -37,9 +37,9 @@ async def get_current_user_id(
     try:
         payload = _decode(credentials.credentials)
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="token expired")
+        raise HTTPException(status_code=401, detail="token expired") from None
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="invalid token")
+        raise HTTPException(status_code=401, detail="invalid token") from None
 
     if await is_token_blacklisted(payload["jti"]):
         raise HTTPException(status_code=401, detail="token revoked")

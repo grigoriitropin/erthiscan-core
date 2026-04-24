@@ -2,7 +2,7 @@ import asyncio
 import secrets
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -12,6 +12,7 @@ from google.oauth2 import id_token
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 
+from app.api.deps import bearer_scheme
 from app.cache import blacklist_token
 from app.config import get_settings
 from app.models.database import WriteSession
@@ -70,7 +71,7 @@ async def auth_google(request: Request, payload: GoogleAuthRequest):
             _settings.google_web_client_id,
         )
     except ValueError:
-        raise HTTPException(status_code=401, detail="invalid google token")
+        raise HTTPException(status_code=401, detail="invalid google token") from None
 
     # Defence-in-depth: re-check issuer (google-auth already does, but be explicit)
     if idinfo.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
@@ -95,7 +96,7 @@ async def auth_google(request: Request, payload: GoogleAuthRequest):
             await session.refresh(user)
 
         refresh_token_str = secrets.token_urlsafe(64)
-        expires_at = datetime.now(timezone.utc) + timedelta(days=_settings.refresh_token_ttl_days)
+        expires_at = datetime.now(UTC) + timedelta(days=_settings.refresh_token_ttl_days)
         session.add(RefreshToken(user_id=user.id, token=refresh_token_str, expires_at=expires_at))
         await session.commit()
 
@@ -128,7 +129,7 @@ async def refresh(request: Request, payload: RefreshRequest):
         if rt is None:
             raise HTTPException(status_code=401, detail="invalid refresh token")
 
-        if rt.expires_at is not None and rt.expires_at < datetime.now(timezone.utc):
+        if rt.expires_at is not None and rt.expires_at < datetime.now(UTC):
             await session.delete(rt)
             await session.commit()
             raise HTTPException(status_code=401, detail="refresh token expired")
@@ -138,7 +139,7 @@ async def refresh(request: Request, payload: RefreshRequest):
         # Rotate: delete old, create new
         await session.delete(rt)
         new_refresh = secrets.token_urlsafe(64)
-        expires_at = datetime.now(timezone.utc) + timedelta(days=_settings.refresh_token_ttl_days)
+        expires_at = datetime.now(UTC) + timedelta(days=_settings.refresh_token_ttl_days)
         session.add(RefreshToken(user_id=user_id, token=new_refresh, expires_at=expires_at))
         await session.commit()
 
@@ -146,9 +147,6 @@ async def refresh(request: Request, payload: RefreshRequest):
         access_token=_make_access_token(user_id),
         refresh_token=new_refresh,
     )
-
-
-from app.api.deps import bearer_scheme
 
 
 @router.post("/logout")
@@ -163,7 +161,7 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(bearer_sche
             options={"require": ["exp", "jti", "user_id"]},
         )
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="invalid token")
+        raise HTTPException(status_code=401, detail="invalid token") from None
 
     jti = payload.get("jti")
     if jti:

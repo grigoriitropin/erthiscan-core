@@ -5,10 +5,10 @@ Revises: 0004_add_open_facts_products
 Create Date: 2026-04-02 00:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY
 
+from alembic import op
 
 revision = "0005_add_reports_and_votes"
 down_revision = "0004_add_open_facts_products"

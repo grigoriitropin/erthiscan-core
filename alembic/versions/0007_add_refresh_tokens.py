@@ -5,9 +5,9 @@ Revises: 0006_add_vote_sum_to_reports
 Create Date: 2026-04-06 00:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0007_add_refresh_tokens"
 down_revision = "0006_add_vote_sum_to_reports"

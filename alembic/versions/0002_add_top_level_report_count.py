@@ -5,9 +5,9 @@ Revises: 0001_initial
 Create Date: 2026-03-13 00:00:01
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0002_add_top_level_report_count"
 down_revision = "0001_initial"

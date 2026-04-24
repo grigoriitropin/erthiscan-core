@@ -5,8 +5,9 @@ Revises: 0009_drop_open_facts_products
 Create Date: 2026-04-24 00:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0010_refresh_token_expires_at"
 down_revision = "0009_drop_open_facts_products"

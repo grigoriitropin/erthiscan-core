@@ -1,20 +1,16 @@
-FROM python:3.14-slim AS builder
+FROM python:3.14-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libc6-dev && \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libc6-dev && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --no-build-isolation -r requirements.txt
-
-FROM python:3.14-slim
-
-WORKDIR /app
-
-COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+RUN pip install --no-cache-dir -r requirements.txt && \
+    apt-get purge -y gcc libc6-dev && \
+    apt-get autoremove -y && \
+    rm -rf /root/.cache/pip
 
 RUN adduser --disabled-password --no-create-home --uid 1001 appuser
 

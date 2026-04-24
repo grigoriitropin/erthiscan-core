@@ -69,7 +69,7 @@ def _set_csv_field_limit() -> None:
 def _iter_open_facts_rows(
     companies_normalized: dict[str, str],
     seen_barcodes: set[int]
-) -> Generator[tuple[int, int, int, OpenFactsProductBatch], None, None]:
+) -> Generator[tuple[int, int, int, OpenFactsProductBatch]]:
     _set_csv_field_limit()
 
     request = Request(
@@ -97,7 +97,7 @@ def _iter_open_facts_rows(
                 if len(barcode) != 13 or not barcode.isdigit():
                     skipped_rows += 1
                     continue
-                
+
                 barcode_key = int(barcode)
                 if barcode_key in seen_barcodes:
                     continue

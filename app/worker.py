@@ -4,7 +4,7 @@ import logging
 import os
 
 from aiokafka import AIOKafkaConsumer
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 from app.cache import cache_delete_pattern, get_redis
 from app.enricher.company_score import recalculate_company_score

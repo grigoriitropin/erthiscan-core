@@ -2,22 +2,22 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
-import structlog
 
 from app.api.auth import router as auth_router
-from app.api.barcode import router as barcode_router, scan_router
+from app.api.barcode import router as barcode_router
+from app.api.barcode import scan_router
 from app.api.companies import router as companies_router
 from app.api.reports import router as reports_router
 from app.events import close_producer
 from app.models.database import ReadSession, WriteSession
 from app.rate_limit import limiter
-from prometheus_fastapi_instrumentator import Instrumentator
-
 
 structlog.configure(
     processors=[
@@ -102,12 +102,12 @@ async def db_health():
         async with WriteSession() as session:
             await session.execute(text("SELECT 1"))
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"write: {e}")
+        raise HTTPException(status_code=503, detail=f"write: {e}") from e
 
     try:
         async with ReadSession() as session:
             await session.execute(text("SELECT 1"))
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"read: {e}")
+        raise HTTPException(status_code=503, detail=f"read: {e}") from e
 
     return {"database": "ok", "read": "ok"}

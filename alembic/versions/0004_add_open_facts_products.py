@@ -5,9 +5,9 @@ Revises: 0003_add_pending_vote_count
 Create Date: 2026-03-14 00:00:03
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0004_add_open_facts_products"
 down_revision = "0003_add_pending_vote_count"

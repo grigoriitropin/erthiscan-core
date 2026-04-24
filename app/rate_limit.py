@@ -1,14 +1,14 @@
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-from app.config import get_settings
-
-_settings = get_settings()
-
 import logging
 import os
 
+# Patch slowapi's handler BEFORE middleware module-level code runs.
+# Must be before get_settings() because middleware is imported by main.py earlier.
+import slowapi.middleware as _mw
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
+
+from app.config import get_settings
 
 
 def _safe_handler(request, exc):
@@ -16,10 +16,10 @@ def _safe_handler(request, exc):
     return JSONResponse({"error": f"rate limit: {detail}"}, status_code=429)
 
 
-# Patch slowapi's handler BEFORE middleware module-level code runs
-import slowapi.middleware as _mw
 _mw._rate_limit_exceeded_handler = _safe_handler
 
+
+_settings = get_settings()
 
 _log = logging.getLogger(__name__)
 

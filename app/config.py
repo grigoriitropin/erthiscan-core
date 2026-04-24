@@ -1,5 +1,4 @@
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,8 +15,8 @@ class Settings(BaseSettings):
     jwt_expiry_seconds: int = 3600
     refresh_token_ttl_days: int = 30
 
-    redis_url: Optional[str] = Field(default=None, alias="REDIS_URL")
-    kafka_bootstrap: Optional[str] = Field(default=None, alias="KAFKA_BOOTSTRAP")
+    redis_url: str | None = Field(default=None, alias="REDIS_URL")
+    kafka_bootstrap: str | None = Field(default=None, alias="KAFKA_BOOTSTRAP")
 
     rate_limit_auth: str = "10/minute"
     rate_limit_default: str = "120/minute"

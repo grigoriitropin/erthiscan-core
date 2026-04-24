@@ -39,11 +39,12 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "SIM", "RUF"]
-ignore = ["S101", "E501"]
+ignore = ["S101", "E501", "B008"]
 
 [tool.ruff.lint.per-file-ignores]
 "alembic/**" = ["S"]
 "tests/**" = ["S"]
+"app/collector/**" = ["S310", "SIM117", "B007"]
 
 [tool.mypy]
 python_version = "3.14"

@@ -5,8 +5,9 @@ Revises: 0008_add_trigram_search
 Create Date: 2026-04-18 00:00:00
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0009_drop_open_facts_products"
 down_revision = "0008_add_trigram_search"

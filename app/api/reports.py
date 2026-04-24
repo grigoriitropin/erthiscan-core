@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, delete, update
+from sqlalchemy import delete, func, select, update
 
 from app.api.deps import get_current_user_id
 from app.cache import cache_delete_pattern, get_redis

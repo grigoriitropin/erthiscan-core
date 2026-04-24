@@ -1,7 +1,9 @@
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, SmallInteger, Integer, ForeignKey, DateTime, CheckConstraint
+from datetime import UTC, datetime
+
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, SmallInteger, String
 from sqlalchemy.dialects.postgresql import ARRAY
-from datetime import datetime, timezone
+from sqlalchemy.orm import Mapped, mapped_column
+
 from app.models.database import Base
 
 
@@ -27,5 +29,5 @@ class Report(Base):
     vote_sum: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )

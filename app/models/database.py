@@ -1,6 +1,7 @@
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
 import os
+
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 # Database connection URL from environment variable
 WRITE_URL = os.getenv("DB_WRITE_URL")
