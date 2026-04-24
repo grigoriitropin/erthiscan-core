@@ -1,7 +1,7 @@
 FROM python:3.14-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libc6-dev && \
+    apt-get install -y --no-install-recommends gcc libc6-dev zlib1g-dev && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
