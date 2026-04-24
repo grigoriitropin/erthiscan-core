@@ -1,6 +1,8 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, update
 
 from app.api.deps import get_current_user_id
 from app.cache import cache_delete_pattern, get_redis
@@ -44,7 +46,7 @@ class UserReportItem(BaseModel):
     text: str
     sources: list[str]
     vote_sum: int
-    created_at: str
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -57,7 +59,7 @@ class UserChallengeItem(BaseModel):
     text: str
     sources: list[str]
     vote_sum: int
-    created_at: str
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -176,7 +178,7 @@ async def vote_on_report(
         raise HTTPException(status_code=400, detail="value must be 1 or -1")
 
     async with WriteSession() as session:
-        report = await session.get(Report, report_id)
+        report = await session.get(Report, report_id, with_for_update=True)
         if report is None:
             raise HTTPException(status_code=404, detail="report not found")
 
@@ -188,23 +190,23 @@ async def vote_on_report(
 
         if existing is not None:
             if existing.value == payload.value:
-                # Toggle off — remove vote
                 await session.delete(existing)
-                report.vote_sum -= payload.value
+                delta = -payload.value
             else:
-                # Switch vote
                 existing.value = payload.value
-                report.vote_sum += 2 * payload.value
+                delta = 2 * payload.value
         else:
-            # New vote
             session.add(Vote(report_id=report_id, user_id=user_id, value=payload.value))
-            report.vote_sum += payload.value
+            delta = payload.value
+
+        await session.execute(
+            update(Report).where(Report.id == report_id).values(vote_sum=Report.vote_sum + delta)
+        )
 
         r = await get_redis()
         recalc_key = f"score_recalc:{report.company_id}"
-        if not await r.exists(recalc_key):
+        if await r.set(recalc_key, "1", ex=60, nx=True):
             await recalculate_company_score(session, report.company_id)
-            await r.set(recalc_key, "1", ex=60)
 
         await session.commit()
 
@@ -290,7 +292,7 @@ async def get_my_profile(user_id: int = Depends(get_current_user_id)):
                 text=r.text,
                 sources=r.sources,
                 vote_sum=r.vote_sum,
-                created_at=str(r.created_at),
+                created_at=r.created_at,
             )
             for r in report_rows
         ],
@@ -303,7 +305,7 @@ async def get_my_profile(user_id: int = Depends(get_current_user_id)):
                 text=c.text,
                 sources=c.sources,
                 vote_sum=c.vote_sum,
-                created_at=str(c.created_at),
+                created_at=c.created_at,
             )
             for c in challenge_rows
         ],

@@ -1,29 +1,30 @@
 import asyncio
-import os
 import secrets
 import time
 import uuid
-from functools import partial
+from datetime import datetime, timedelta, timezone
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
 from pydantic import BaseModel
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 
-from app.cache import blacklist_token, is_token_blacklisted
+from app.cache import blacklist_token
+from app.config import get_settings
 from app.models.database import WriteSession
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+from app.rate_limit import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-GOOGLE_WEB_CLIENT_ID = os.environ.get("GOOGLE_WEB_CLIENT_ID", "")
-JWT_SECRET = os.environ.get("JWT_SECRET", "")
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_SECONDS = 3600  # 1 hour
+_settings = get_settings()
+
+# Single Google Request instance reused across verify calls
+_google_request = GoogleRequest()
 
 
 class GoogleAuthRequest(BaseModel):
@@ -42,30 +43,38 @@ class RefreshRequest(BaseModel):
 
 
 def _make_access_token(user_id: int) -> str:
+    now = int(time.time())
     return jwt.encode(
         {
             "user_id": user_id,
             "jti": str(uuid.uuid4()),
-            "exp": int(time.time()) + JWT_EXPIRY_SECONDS,
+            "iss": _settings.jwt_issuer,
+            "aud": _settings.jwt_audience,
+            "iat": now,
+            "nbf": now,
+            "exp": now + _settings.jwt_expiry_seconds,
         },
-        JWT_SECRET,
-        algorithm=JWT_ALGORITHM,
+        _settings.jwt_secret,
+        algorithm=_settings.jwt_algorithm,
     )
 
 
 @router.post("/google", response_model=AuthResponse)
-async def auth_google(payload: GoogleAuthRequest):
-    if not GOOGLE_WEB_CLIENT_ID or not JWT_SECRET:
-        raise HTTPException(status_code=500, detail="auth not configured")
-
+@limiter.limit(_settings.rate_limit_auth)
+async def auth_google(request: Request, payload: GoogleAuthRequest):
     try:
-        loop = asyncio.get_event_loop()
-        idinfo = await loop.run_in_executor(
-            None,
-            partial(id_token.verify_oauth2_token, payload.token, GoogleRequest(), GOOGLE_WEB_CLIENT_ID),
+        idinfo = await asyncio.to_thread(
+            id_token.verify_oauth2_token,
+            payload.token,
+            _google_request,
+            _settings.google_web_client_id,
         )
     except ValueError:
         raise HTTPException(status_code=401, detail="invalid google token")
+
+    # Defence-in-depth: re-check issuer (google-auth already does, but be explicit)
+    if idinfo.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(status_code=401, detail="invalid google issuer")
 
     google_id = idinfo["sub"]
     username = idinfo.get("name", idinfo.get("email", "user"))
@@ -85,9 +94,9 @@ async def auth_google(payload: GoogleAuthRequest):
             await session.commit()
             await session.refresh(user)
 
-        # Create refresh token
         refresh_token_str = secrets.token_urlsafe(64)
-        session.add(RefreshToken(user_id=user.id, token=refresh_token_str))
+        expires_at = datetime.now(timezone.utc) + timedelta(days=_settings.refresh_token_ttl_days)
+        session.add(RefreshToken(user_id=user.id, token=refresh_token_str, expires_at=expires_at))
         await session.commit()
 
     access_token = _make_access_token(user.id)
@@ -106,24 +115,31 @@ class RefreshResponse(BaseModel):
 
 
 @router.post("/refresh", response_model=RefreshResponse)
-async def refresh(payload: RefreshRequest):
+@limiter.limit(_settings.rate_limit_auth)
+async def refresh(request: Request, payload: RefreshRequest):
     if WriteSession is None:
         raise HTTPException(status_code=500, detail="database not configured")
 
     async with WriteSession() as session:
         result = await session.execute(
-            select(RefreshToken).where(RefreshToken.token == payload.refresh_token)
+            select(RefreshToken).where(RefreshToken.token == payload.refresh_token).with_for_update()
         )
         rt = result.scalar_one_or_none()
         if rt is None:
             raise HTTPException(status_code=401, detail="invalid refresh token")
+
+        if rt.expires_at is not None and rt.expires_at < datetime.now(timezone.utc):
+            await session.delete(rt)
+            await session.commit()
+            raise HTTPException(status_code=401, detail="refresh token expired")
 
         user_id = rt.user_id
 
         # Rotate: delete old, create new
         await session.delete(rt)
         new_refresh = secrets.token_urlsafe(64)
-        session.add(RefreshToken(user_id=user_id, token=new_refresh))
+        expires_at = datetime.now(timezone.utc) + timedelta(days=_settings.refresh_token_ttl_days)
+        session.add(RefreshToken(user_id=user_id, token=new_refresh, expires_at=expires_at))
         await session.commit()
 
     return RefreshResponse(
@@ -132,13 +148,20 @@ async def refresh(payload: RefreshRequest):
     )
 
 
-bearer_scheme = HTTPBearer()
+from app.api.deps import bearer_scheme
 
 
 @router.post("/logout")
 async def logout(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
     try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(
+            credentials.credentials,
+            _settings.jwt_secret,
+            algorithms=[_settings.jwt_algorithm],
+            audience=_settings.jwt_audience,
+            issuer=_settings.jwt_issuer,
+            options={"require": ["exp", "jti", "user_id"]},
+        )
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="invalid token")
 
@@ -148,7 +171,6 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(bearer_sche
         if ttl > 0:
             await blacklist_token(jti, ttl)
 
-    # Delete all refresh tokens for this user
     user_id = payload.get("user_id")
     if user_id and WriteSession is not None:
         async with WriteSession() as session:

@@ -1,13 +1,16 @@
-fastapi # Web framework for building the API
-uvicorn # ASGI server to run the FastAPI application
-asyncpg # Async PostgreSQL driver
-sqlalchemy[asyncio] #ORM and database toolkit
-alembic # Database migrations
-psycopg[binary] # Sync PostgreSQL driver for migrations
-httpx # HTTP client for collector lookups
-google-auth # Verify Google ID tokens
-requests # Required by google-auth transport
-PyJWT # Issue signed access tokens
-redis[hiredis] # Redis client with C parser for caching and JWT blacklist
-aiokafka # Async Kafka client for event processing
-unidecode # Transliterate non-ASCII text to ASCII for cross-script search
+fastapi==0.135.1
+uvicorn[standard]==0.41.0
+asyncpg==0.31.0
+SQLAlchemy[asyncio]==2.0.48
+alembic==1.18.4
+psycopg[binary]==3.3.3
+httpx==0.28.1
+google-auth==2.42.0
+requests==2.32.5
+PyJWT==2.10.1
+redis[hiredis]==5.3.1
+aiokafka==0.12.0
+unidecode==1.4.0
+pydantic==2.12.5
+pydantic-settings==2.11.0
+slowapi==0.1.9

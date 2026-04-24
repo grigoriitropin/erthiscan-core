@@ -4,6 +4,7 @@ import logging
 import os
 
 from aiokafka import AIOKafkaConsumer
+from sqlalchemy import select, update
 
 from app.cache import cache_delete_pattern, get_redis
 from app.enricher.company_score import recalculate_company_score
@@ -26,18 +27,23 @@ async def handle_vote(data: dict) -> None:
         )
         session.add(vote)
 
-        report = await session.get(Report, data["report_id"])
-        report.vote_sum = Report.vote_sum + data["value"]
+        company_id = (
+            await session.execute(
+                update(Report)
+                .where(Report.id == data["report_id"])
+                .values(vote_sum=Report.vote_sum + data["value"])
+                .returning(Report.company_id)
+            )
+        ).scalar_one()
 
         r = await get_redis()
-        recalc_key = f"score_recalc:{report.company_id}"
-        if not await r.exists(recalc_key):
-            await recalculate_company_score(session, report.company_id)
-            await r.set(recalc_key, "1", ex=60)
+        recalc_key = f"score_recalc:{company_id}"
+        if await r.set(recalc_key, "1", ex=60, nx=True):
+            await recalculate_company_score(session, company_id)
 
         await session.commit()
 
-    await cache_delete_pattern(f"company:{report.company_id}*")
+    await cache_delete_pattern(f"company:{company_id}*")
     await cache_delete_pattern("companies:*")
     await cache_delete_pattern("scan:*")
     logger.info("vote processed: report=%d user=%d value=%d", data["report_id"], data["user_id"], data["value"])
@@ -57,14 +63,16 @@ async def handle_report(data: dict) -> None:
 
         if report.depth == 0:
             from app.models.company import Company
-            company = await session.get(Company, data["company_id"])
-            company.top_level_report_count += 1
+            await session.execute(
+                update(Company)
+                .where(Company.id == data["company_id"])
+                .values(top_level_report_count=Company.top_level_report_count + 1)
+            )
 
         r = await get_redis()
         recalc_key = f"score_recalc:{data['company_id']}"
-        if not await r.exists(recalc_key):
+        if await r.set(recalc_key, "1", ex=60, nx=True):
             await recalculate_company_score(session, data["company_id"])
-            await r.set(recalc_key, "1", ex=60)
 
         await session.commit()
 

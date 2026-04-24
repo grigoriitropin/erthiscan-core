@@ -1,39 +1,50 @@
-import os
-
 import jwt
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.cache import is_token_blacklisted
-
-JWT_SECRET = os.environ.get("JWT_SECRET", "")
-JWT_ALGORITHM = "HS256"
+from app.config import get_settings
 
 bearer_scheme = HTTPBearer()
 optional_bearer = HTTPBearer(auto_error=False)
+
+_JWT_DECODE_OPTIONS = {
+    "require": ["exp", "iat", "nbf", "jti", "iss", "aud", "user_id"],
+    "verify_signature": True,
+    "verify_exp": True,
+    "verify_nbf": True,
+    "verify_iat": True,
+    "verify_aud": True,
+    "verify_iss": True,
+}
+
+
+def _decode(token: str) -> dict:
+    settings = get_settings()
+    return jwt.decode(
+        token,
+        settings.jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+        audience=settings.jwt_audience,
+        issuer=settings.jwt_issuer,
+        options=_JWT_DECODE_OPTIONS,
+    )
 
 
 async def get_current_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> int:
     try:
-        payload = jwt.decode(
-            credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
-        )
+        payload = _decode(credentials.credentials)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="invalid token")
 
-    jti = payload.get("jti")
-    if jti and await is_token_blacklisted(jti):
+    if await is_token_blacklisted(payload["jti"]):
         raise HTTPException(status_code=401, detail="token revoked")
 
-    user_id = payload.get("user_id")
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="invalid token")
-
-    return user_id
+    return int(payload["user_id"])
 
 
 async def get_optional_user_id(
@@ -42,14 +53,11 @@ async def get_optional_user_id(
     if credentials is None:
         return None
     try:
-        payload = jwt.decode(
-            credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
-        )
+        payload = _decode(credentials.credentials)
     except jwt.InvalidTokenError:
         return None
 
-    jti = payload.get("jti")
-    if jti and await is_token_blacklisted(jti):
+    if await is_token_blacklisted(payload["jti"]):
         return None
 
-    return payload.get("user_id")
+    return int(payload["user_id"])

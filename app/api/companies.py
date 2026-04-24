@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func, case, text
+from sqlalchemy import func, select
 
 from app.api.deps import get_optional_user_id
 from app.cache import cache_get, cache_set

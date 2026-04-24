@@ -1,0 +1,59 @@
+[project]
+name = "erthiscan-core"
+version = "0.1.0"
+description = "Erthiscan core API: FastAPI backend for ethical company scoring"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi~=0.135.0",
+    "uvicorn[standard]~=0.41.0",
+    "asyncpg~=0.31.0",
+    "SQLAlchemy[asyncio]~=2.0.48",
+    "alembic~=1.18.0",
+    "psycopg[binary]~=3.3.0",
+    "httpx~=0.28.0",
+    "google-auth~=2.42.0",
+    "requests~=2.32.0",
+    "PyJWT~=2.10.0",
+    "redis[hiredis]~=5.3.0",
+    "aiokafka~=0.12.0",
+    "unidecode~=1.4.0",
+    "pydantic~=2.12.0",
+    "pydantic-settings~=2.11.0",
+    "slowapi~=0.1.9",
+    "structlog~=25.1.0",
+    "prometheus-fastapi-instrumentator~=7.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest~=8.3",
+    "pytest-asyncio~=0.24",
+    "ruff~=0.8",
+    "mypy~=1.13",
+    "types-requests",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "SIM", "RUF"]
+ignore = ["S101", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/**" = ["S"]
+"tests/**" = ["S"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-m 'not integration'"
+markers = [
+    "integration: tests that require external services (PostgreSQL, Redis, Kafka)",
+]

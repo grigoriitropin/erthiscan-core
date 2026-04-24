@@ -72,18 +72,6 @@ async def get_product_by_barcode(barcode: str):
     return _build_response(product, company)
 
 
-@router.post("/{barcode}/collect")
-async def collect_product_by_barcode(barcode: str):
-    _validate_barcode(barcode)
-
-    row = await _get_local_product(barcode)
-    if row is None:
-        raise HTTPException(status_code=404, detail="product not found")
-
-    product, company = row
-    return _build_response(product, company)
-
-
 @scan_router.post("/scan/barcode")
 async def scan_barcode(payload: ScanBarcodeRequest):
     _validate_barcode(payload.barcode)

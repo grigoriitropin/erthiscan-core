@@ -1,9 +1,11 @@
+import asyncio
 from logging.config import fileConfig
 import os
+import re
 
 import app.models  # noqa: F401
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.models.database import Base
 
@@ -16,7 +18,9 @@ db_url = os.getenv("DB_WRITE_URL")
 if not db_url:
     raise RuntimeError("DB_WRITE_URL is not set")
 
-config.set_main_option("sqlalchemy.url", db_url)
+# Alembic needs a sync URL (strip +asyncpg)
+sync_url = re.sub(r"\+asyncpg", "", db_url)
+config.set_main_option("sqlalchemy.url", sync_url)
 
 target_metadata = Base.metadata
 
@@ -35,21 +39,26 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+def do_run_migrations(connection):
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
     )
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-            compare_server_default=True,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations():
+    engine = create_async_engine(db_url, pool_pre_ping=True)
+    async with engine.connect() as conn:
+        await conn.run_sync(do_run_migrations)
+    await engine.dispose()
+
+
+def run_migrations_online() -> None:
+    asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():
