@@ -23,7 +23,9 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.14"
-      - run: uv sync --group dev
+      - run: uv venv
+      - run: uv pip install -r requirements.txt
+      - run: uv pip install pytest pytest-asyncio httpx ruff mypy types-requests
       - run: uv run ruff check app/
       - run: uv run ruff format --check app/ 2>/dev/null || true
       - run: uv run pytest -v -m "not integration"

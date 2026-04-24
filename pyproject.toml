@@ -20,7 +20,7 @@ dependencies = [
     "pydantic~=2.12.0",
     "pydantic-settings~=2.11.0",
     "slowapi~=0.1.9",
-    "structlog~=25.1.0",
+    "structlog~=25.5.0",
     "prometheus-fastapi-instrumentator~=7.1.0",
 ]
 
