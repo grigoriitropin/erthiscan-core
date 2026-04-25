@@ -4,6 +4,7 @@ import logging
 import os
 
 from aiokafka import AIOKafkaConsumer
+from redis.exceptions import RedisError
 from sqlalchemy import update
 
 from app.cache import cache_delete_pattern, get_redis
@@ -16,6 +17,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka.erthiscan.svc.cluster.local:9092")
+
+
+async def _should_recalc(company_id: int) -> bool:
+    """Fail-open dedup: idempotent recalc, so on Redis hiccup we just run it."""
+    r = await get_redis()
+    if r is None:
+        return True
+    try:
+        return bool(await r.set(f"score_recalc:{company_id}", "1", ex=60, nx=True))
+    except RedisError:
+        logger.warning("redis score_recalc dedup failed; recalculating anyway", exc_info=True)
+        return True
 
 
 async def handle_vote(data: dict) -> None:
@@ -36,9 +49,7 @@ async def handle_vote(data: dict) -> None:
             )
         ).scalar_one()
 
-        r = await get_redis()
-        recalc_key = f"score_recalc:{company_id}"
-        if await r.set(recalc_key, "1", ex=60, nx=True):
+        if await _should_recalc(company_id):
             await recalculate_company_score(session, company_id)
 
         await session.commit()
@@ -69,9 +80,7 @@ async def handle_report(data: dict) -> None:
                 .values(top_level_report_count=Company.top_level_report_count + 1)
             )
 
-        r = await get_redis()
-        recalc_key = f"score_recalc:{data['company_id']}"
-        if await r.set(recalc_key, "1", ex=60, nx=True):
+        if await _should_recalc(data["company_id"]):
             await recalculate_company_score(session, data["company_id"])
 
         await session.commit()

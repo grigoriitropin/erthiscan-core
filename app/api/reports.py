@@ -1,7 +1,9 @@
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from redis.exceptions import RedisError
 from sqlalchemy import delete, func, select, update
 
 from app.api.deps import get_current_user_id
@@ -13,6 +15,8 @@ from app.models.database import ReadSession, WriteSession
 from app.models.report import Report
 from app.models.user import User
 from app.models.vote import Vote
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -203,9 +207,21 @@ async def vote_on_report(
             update(Report).where(Report.id == report_id).values(vote_sum=Report.vote_sum + delta)
         )
 
+        # Fail-open dedup: if Redis is down, we may recalc twice — that's fine,
+        # the score is idempotent. Better than failing the vote on a Redis blip.
+        should_recalc = False
         r = await get_redis()
-        recalc_key = f"score_recalc:{report.company_id}"
-        if await r.set(recalc_key, "1", ex=60, nx=True):
+        if r is not None:
+            try:
+                should_recalc = bool(
+                    await r.set(f"score_recalc:{report.company_id}", "1", ex=60, nx=True)
+                )
+            except RedisError:
+                logger.warning("redis score_recalc dedup failed; recalculating anyway", exc_info=True)
+                should_recalc = True
+        else:
+            should_recalc = True
+        if should_recalc:
             await recalculate_company_score(session, report.company_id)
 
         await session.commit()
