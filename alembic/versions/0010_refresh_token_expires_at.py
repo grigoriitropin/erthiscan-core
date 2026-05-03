@@ -6,6 +6,7 @@ Create Date: 2026-04-24 00:00:00
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # REVISION IDENTIFIERS: Final current migration in the version history.
@@ -16,6 +17,7 @@ depends_on = None
 
 # NOTE: THIS MIGRATION IS MANAGED AUTOMATICALLY BY THE SERVER.
 
+
 def upgrade() -> None:
     """
     UPGRADE PHASE: Enhances the 'refresh_tokens' table for better security and performance.
@@ -25,7 +27,7 @@ def upgrade() -> None:
         "refresh_tokens",
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
     )
-    # 2. INDEXING: Adds a secondary index on 'user_id' to efficiently look up 
+    # 2. INDEXING: Adds a secondary index on 'user_id' to efficiently look up
     # all active sessions for a specific user.
     op.create_index(
         "ix_refresh_tokens_user_id",

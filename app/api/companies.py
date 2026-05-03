@@ -17,8 +17,10 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 
 # --- DATA SCHEMAS (Pydantic) ---
 
+
 class CompanyItem(BaseModel):
     """Summary view of a company for the directory list."""
+
     id: int
     name: str
     ethical_score: float
@@ -30,6 +32,7 @@ class CompanyItem(BaseModel):
 
 class CompaniesResponse(BaseModel):
     """Paginated response containing a list of companies and metadata."""
+
     items: list[CompanyItem]
     total: int
     page: int
@@ -38,6 +41,7 @@ class CompaniesResponse(BaseModel):
 
 class SubReportItem(BaseModel):
     """Detailed view of a 'Challenge' (sub-report) with community voting stats."""
+
     id: int
     user_id: int
     text: str
@@ -51,6 +55,7 @@ class SubReportItem(BaseModel):
 
 class ReportItem(BaseModel):
     """Detailed view of a top-level report, including its nested challenges."""
+
     id: int
     user_id: int
     text: str
@@ -65,25 +70,30 @@ class ReportItem(BaseModel):
 
 class CompanyDetail(BaseModel):
     """Full profile of a company, including its complete hierarchical reporting tree."""
+
     id: int
     name: str
     ethical_score: float
     report_count: int
     reports: list[ReportItem]
 
+
 # --- ENDPOINTS ---
+
 
 @router.get("", response_model=CompaniesResponse)
 async def list_companies(
     search: str = Query("", max_length=100),
     # SORTING PATTERN: Strict validation of sort parameters to prevent SQL injection.
-    sort: str = Query("reports_desc", pattern="^(reports_desc|score_desc|score_asc|name_asc|name_desc)$"),
+    sort: str = Query(
+        "reports_desc", pattern="^(reports_desc|score_desc|score_asc|name_asc|name_desc)$"
+    ),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
 ):
     """
     COMPANY DIRECTORY: Fetches a paginated list of companies.
-    
+
     LOGIC:
     1. CACHE CHECK: Uses Redis to store the results of specific search/sort/page combinations.
     2. FILTERING: Only companies with at least one report are shown by default to maintain data quality.
@@ -104,6 +114,7 @@ async def list_companies(
         # FUZZY SEARCH: Uses the normalized name for typo-tolerant matching.
         if search:
             from app.collector.utils import python_normalize_name
+
             similarity = func.similarity(Company.name_normalized, python_normalize_name(search))
             query = query.where(similarity > 0.15)
             count_query = count_query.where(similarity > 0.15)
@@ -159,7 +170,7 @@ async def get_company(
 ):
     """
     COMPANY PROFILE: Detailed data including the tree of ethical reports.
-    
+
     COMPLEX QUERY LOGIC:
     1. TOP-LEVEL REPORTS: Fetches reports (depth 0) and aggregates ethical/unethical votes using JOINs.
     2. USER CONTEXT: If a user_id is present, checks which reports the user has already voted on.
@@ -202,8 +213,9 @@ async def get_company(
         user_votes = {}
         if user_id and report_ids:
             uv_result = await session.execute(
-                select(Vote.report_id, Vote.value)
-                .where(Vote.user_id == user_id, Vote.report_id.in_(report_ids))
+                select(Vote.report_id, Vote.value).where(
+                    Vote.user_id == user_id, Vote.report_id.in_(report_ids)
+                )
             )
             user_votes = {row.report_id: row.value for row in uv_result.all()}
 
@@ -224,9 +236,15 @@ async def get_company(
                 )
                 .join(User, User.id == Report.user_id)
                 .outerjoin(Vote, Vote.report_id == Report.id)
-                .where(Report.company_id == company_id, Report.depth == 1, Report.parent_id.in_(report_ids))
+                .where(
+                    Report.company_id == company_id,
+                    Report.depth == 1,
+                    Report.parent_id.in_(report_ids),
+                )
                 .group_by(Report.id, User.username)
-                .order_by(Report.vote_sum.desc()) # Sort sub-reports by their community trust level.
+                .order_by(
+                    Report.vote_sum.desc()
+                )  # Sort sub-reports by their community trust level.
             )
             sub_rows = sub_result.all()
 
@@ -234,8 +252,9 @@ async def get_company(
             sub_user_votes = {}
             if user_id and sub_ids:
                 suv_result = await session.execute(
-                    select(Vote.report_id, Vote.value)
-                    .where(Vote.user_id == user_id, Vote.report_id.in_(sub_ids))
+                    select(Vote.report_id, Vote.value).where(
+                        Vote.user_id == user_id, Vote.report_id.in_(sub_ids)
+                    )
                 )
                 sub_user_votes = {row.report_id: row.value for row in suv_result.all()}
 

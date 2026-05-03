@@ -33,11 +33,13 @@ _google_request = GoogleRequest()
 
 class GoogleAuthRequest(BaseModel):
     """Input schema for Google authentication, expecting a raw ID Token from the frontend."""
+
     token: str
 
 
 class AuthResponse(BaseModel):
     """Unified response schema containing session tokens and essential user identity data."""
+
     access_token: str
     refresh_token: str
     user_id: int
@@ -46,13 +48,14 @@ class AuthResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     """Input schema for session renewal using a previously issued refresh token."""
+
     refresh_token: str
 
 
 def _make_access_token(user_id: int) -> str:
     """
     JWT FACTORY: Generates a signed, short-lived Access Token.
-    
+
     CLAIMS EXPLAINED:
     - user_id: The primary identifier for the owner of the token.
     - jti (JWT ID): A unique UUID for this specific token, allowing it to be blacklisted.
@@ -82,12 +85,12 @@ def _make_access_token(user_id: int) -> str:
 async def auth_google(request: Request, payload: GoogleAuthRequest):
     """
     GOOGLE AUTHENTICATION FLOW:
-    1. VALIDATION: The Google ID Token is verified. We use 'asyncio.to_thread' 
-       because the 'id_token.verify_oauth2_token' function is synchronous and blocking; 
+    1. VALIDATION: The Google ID Token is verified. We use 'asyncio.to_thread'
+       because the 'id_token.verify_oauth2_token' function is synchronous and blocking;
        running it directly would freeze the entire FastAPI event loop.
     2. IDENTITY: Extracts 'sub' (Google's unique user ID) and profile info.
     3. PERSISTENCE: Performs an 'Upsert' — finds the existing user or creates a new one in the DB.
-    4. SESSION: Generates a cryptographically strong Refresh Token using 'secrets.token_urlsafe' 
+    4. SESSION: Generates a cryptographically strong Refresh Token using 'secrets.token_urlsafe'
        and records it in the database with a 30-day expiry.
     """
     try:
@@ -112,9 +115,7 @@ async def auth_google(request: Request, payload: GoogleAuthRequest):
 
     async with WriteSession() as session:
         # USER LOOKUP: Fetch user by their immutable Google ID.
-        result = await session.execute(
-            select(User).where(User.google_id == google_id)
-        )
+        result = await session.execute(select(User).where(User.google_id == google_id))
         user = result.scalar_one_or_none()
 
         if user is None:
@@ -143,6 +144,7 @@ async def auth_google(request: Request, payload: GoogleAuthRequest):
 
 class RefreshResponse(BaseModel):
     """Schema for renewed credentials."""
+
     access_token: str
     refresh_token: str
 
@@ -153,10 +155,10 @@ async def refresh(request: Request, payload: RefreshRequest):
     """
     TOKEN ROTATION FLOW:
     This endpoint implements a secure 'single-use' refresh token pattern.
-    1. LOCKING: Uses 'with_for_update()' to perform a row-level lock on the token entry. 
+    1. LOCKING: Uses 'with_for_update()' to perform a row-level lock on the token entry.
        This prevents race conditions where a token might be refreshed twice simultaneously.
     2. VERIFICATION: Checks if the token exists and hasn't expired.
-    3. ROTATION: The old token is DELETED and a completely new one is issued. 
+    3. ROTATION: The old token is DELETED and a completely new one is issued.
        If a stolen token is reused, the rotation chain breaks, signaling a potential breach.
     """
     if WriteSession is None:
@@ -165,7 +167,9 @@ async def refresh(request: Request, payload: RefreshRequest):
     async with WriteSession() as session:
         # Atomic fetch-and-lock of the refresh token.
         result = await session.execute(
-            select(RefreshToken).where(RefreshToken.token == payload.refresh_token).with_for_update()
+            select(RefreshToken)
+            .where(RefreshToken.token == payload.refresh_token)
+            .with_for_update()
         )
         rt = result.scalar_one_or_none()
         if rt is None:
@@ -197,9 +201,9 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(bearer_sche
     """
     SECURE LOGOUT FLOW:
     Since JWTs are stateless, we use a hybrid approach to invalidate them:
-    1. ACCESS TOKEN: The unique 'jti' of the token is extracted and stored in a Redis 
+    1. ACCESS TOKEN: The unique 'jti' of the token is extracted and stored in a Redis
        blacklist until its natural expiry time. The API middleware checks this list.
-    2. REFRESH TOKENS: All persistent refresh tokens for the user are deleted from 
+    2. REFRESH TOKENS: All persistent refresh tokens for the user are deleted from
        the database, effectively ending their session on all devices.
     """
     try:
@@ -226,9 +230,7 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(bearer_sche
     if user_id and WriteSession is not None:
         async with WriteSession() as session:
             # PERSISTENT SESSION CLEARANCE: Nukes all refresh tokens for this user.
-            await session.execute(
-                delete(RefreshToken).where(RefreshToken.user_id == user_id)
-            )
+            await session.execute(delete(RefreshToken).where(RefreshToken.user_id == user_id))
             await session.commit()
 
     return {"status": "ok"}

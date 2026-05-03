@@ -6,6 +6,7 @@ Create Date: 2026-03-14 00:00:03
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # REVISION IDENTIFIERS: Adds external data source integration to the schema.
@@ -16,9 +17,10 @@ depends_on = None
 
 # NOTE: THIS MIGRATION IS MANAGED AUTOMATICALLY BY THE SERVER.
 
+
 def upgrade() -> None:
     """
-    UPGRADE PHASE: Creates the 'open_facts_products' table to store 
+    UPGRADE PHASE: Creates the 'open_facts_products' table to store
     raw data dumps from external sources for faster local lookup.
     """
     op.create_table(

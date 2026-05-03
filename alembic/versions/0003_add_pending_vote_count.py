@@ -6,6 +6,7 @@ Create Date: 2026-03-13 00:00:02
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # REVISION IDENTIFIERS: Sequential update to the companies table.
@@ -16,9 +17,10 @@ depends_on = None
 
 # NOTE: THIS MIGRATION IS MANAGED AUTOMATICALLY BY THE SERVER.
 
+
 def upgrade() -> None:
     """
-    UPGRADE PHASE: Adds 'pending_vote_count' to track votes that haven't 
+    UPGRADE PHASE: Adds 'pending_vote_count' to track votes that haven't
     yet been processed by the background scoring algorithm.
     """
     # Use server_default="0" to safely update existing rows.

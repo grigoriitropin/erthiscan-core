@@ -10,14 +10,15 @@ from app.models.database import Base
 class Report(Base):
     """
     DATA MODEL: Represents a crowdsourced ethical claim or challenge.
-    
+
     HIERARCHICAL STRUCTURE:
     - depth=0: A top-level report about a company. parent_id MUST be null.
-    - depth=1: A 'challenge' (sub-report) refuting a specific top-level report. 
+    - depth=1: A 'challenge' (sub-report) refuting a specific top-level report.
       parent_id MUST point to the target report.
-    
+
     INTEGRITY: Enforced via PostgreSQL CheckConstraints to ensure data consistency.
     """
+
     __tablename__ = "reports"
 
     __table_args__ = (

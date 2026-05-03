@@ -1,5 +1,5 @@
 # SECURITY TESTS: Verifies the integrity of the JWT authentication system.
-# We test against various attack vectors like algorithm manipulation, 
+# We test against various attack vectors like algorithm manipulation,
 # issuer/audience spoofing, and signature expiration.
 import time
 import uuid

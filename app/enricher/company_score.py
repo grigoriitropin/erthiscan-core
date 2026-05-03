@@ -10,10 +10,10 @@ SCORE_RECALCULATION_VOTE_THRESHOLD = 10
 
 def normalize_ethical_score(raw_score: int) -> float:
     """
-    SCORING NORMALIZATION: Converts an unbounded raw integer score into a 
+    SCORING NORMALIZATION: Converts an unbounded raw integer score into a
     bounded percentage between -100.0 and 100.0.
-    The formula uses a logarithmic-style dampening '(abs(x) + 5)' so that the 
-    first few votes have a strong impact, but it becomes harder to reach extreme 
+    The formula uses a logarithmic-style dampening '(abs(x) + 5)' so that the
+    first few votes have a strong impact, but it becomes harder to reach extreme
     scores as the raw score grows, preventing manipulation.
     """
     if raw_score == 0:
@@ -25,7 +25,7 @@ def normalize_ethical_score(raw_score: int) -> float:
 def register_vote(company: Company) -> bool:
     """
     BATCHING OPTIMIZATION: Instead of recalculating the heavy SQL query for every single vote,
-    we keep a 'pending_vote_count'. The worker only triggers a full recalculation 
+    we keep a 'pending_vote_count'. The worker only triggers a full recalculation
     when this threshold is reached, drastically reducing database load.
     """
     company.pending_vote_count += 1
@@ -34,12 +34,12 @@ def register_vote(company: Company) -> bool:
 
 async def recalculate_company_score(session: AsyncSession, company_id: int) -> Company:
     """
-    HIERARCHICAL SCORING ALGORITHM: 
+    HIERARCHICAL SCORING ALGORITHM:
     This is the core logic of Erthiscan.
     1. Parent Weight: Sum of all votes (+1/-1) on a top-level report.
-    2. Challenge Penalty: If a sub-report (challenge) gets positive votes, those 
-       positive votes are subtracted from the parent report's weight. 
-       (e.g., If a claim has 10 upvotes, but a challenge refuting it has 8 upvotes, 
+    2. Challenge Penalty: If a sub-report (challenge) gets positive votes, those
+       positive votes are subtracted from the parent report's weight.
+       (e.g., If a claim has 10 upvotes, but a challenge refuting it has 8 upvotes,
        the effective weight of the claim drops to 2).
     3. Total Raw Score: The sum of all 'effective weights' across all reports for the company.
     """
@@ -96,8 +96,7 @@ async def recalculate_company_score(session: AsyncSession, company_id: int) -> C
                 func.sum(parent_votes.c.vote_sum - func.coalesce(sub_penalty.c.penalty, 0)),
                 0,
             ),
-        )
-        .outerjoin(sub_penalty, sub_penalty.c.parent_id == parent_votes.c.report_id)
+        ).outerjoin(sub_penalty, sub_penalty.c.parent_id == parent_votes.c.report_id)
     )
     top_level_report_count, raw_score = totals.one()
 

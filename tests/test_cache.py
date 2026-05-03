@@ -8,7 +8,7 @@ from app.cache import cache_get, cache_set
 @pytest.mark.integration
 async def test_cache_set_get():
     """
-    INTEGRATION TEST: Verifies that data can be serialized to JSON, 
+    INTEGRATION TEST: Verifies that data can be serialized to JSON,
     stored in Redis, and retrieved/deserialized correctly.
     Requires a running Redis instance (marked as @integration).
     """

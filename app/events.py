@@ -11,7 +11,7 @@ _producer: AIOKafkaProducer | None = None
 async def get_producer() -> AIOKafkaProducer:
     """
     KAFKA PRODUCER MANAGER: Implements a singleton pattern for the async Kafka producer.
-    Ensures that we maintain a single, persistent connection to the Kafka broker 
+    Ensures that we maintain a single, persistent connection to the Kafka broker
     (KRaft cluster) across all API requests. Events are automatically serialized to JSON.
     """
     global _producer
@@ -34,21 +34,31 @@ async def emit_vote(report_id: int, user_id: int, value: int) -> None:
     await producer.send("votes", {"report_id": report_id, "user_id": user_id, "value": value})
 
 
-async def emit_report(company_id: int, user_id: int, text: str, sources: list[str], parent_id: int | None = None, depth: int = 0) -> None:
+async def emit_report(
+    company_id: int,
+    user_id: int,
+    text: str,
+    sources: list[str],
+    parent_id: int | None = None,
+    depth: int = 0,
+) -> None:
     """
     EVENT EMISSION: Publishes a 'report' event to the Kafka broker.
     Both new ethical claims (depth=0) and challenges (depth=1) flow through here
     to be processed asynchronously by the backend worker.
     """
     producer = await get_producer()
-    await producer.send("reports", {
-        "company_id": company_id,
-        "user_id": user_id,
-        "text": text,
-        "sources": sources,
-        "parent_id": parent_id,
-        "depth": depth,
-    })
+    await producer.send(
+        "reports",
+        {
+            "company_id": company_id,
+            "user_id": user_id,
+            "text": text,
+            "sources": sources,
+            "parent_id": parent_id,
+            "depth": depth,
+        },
+    )
 
 
 async def close_producer() -> None:

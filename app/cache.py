@@ -110,7 +110,7 @@ async def blacklist_token(jti: str, ttl: int) -> None:
 async def is_token_blacklisted(jti: str) -> bool:
     """
     SECURITY (VALIDATION): Checks if a token ID is in the logout blacklist.
-    Uses 'FAIL-CLOSED': if Redis is unreachable, assumes the token is blacklisted 
+    Uses 'FAIL-CLOSED': if Redis is unreachable, assumes the token is blacklisted
     to prevent unauthorized access during a cache outage.
     """
     r = await get_redis()

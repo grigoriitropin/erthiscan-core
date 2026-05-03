@@ -17,6 +17,7 @@ scan_router = APIRouter(tags=["scan"])
 
 class ScanBarcodeRequest(BaseModel):
     """Payload for the scan endpoint, expecting a standard 13-digit EAN code."""
+
     barcode: str
 
 
@@ -96,7 +97,7 @@ async def get_product_by_barcode(barcode: str):
 async def scan_barcode(payload: ScanBarcodeRequest):
     """
     SCANNING ENDPOINT: Optimized for high-frequency mobile app usage.
-    
+
     PERFORMANCE FLOW:
     1. VALIDATION: Quick check of the barcode format.
     2. CACHING: Check Redis for a recent lookup of this specific barcode (TTL: 5 minutes).
@@ -117,7 +118,7 @@ async def scan_barcode(payload: ScanBarcodeRequest):
     if row is not None:
         product, company = row
         response = _build_response(product, company)
-        
+
         # WARM UP CACHE: Store the result for 300 seconds.
         await cache_set(cache_key, response, ttl=300)
         return response

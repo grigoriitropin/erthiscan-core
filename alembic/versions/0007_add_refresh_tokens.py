@@ -6,6 +6,7 @@ Create Date: 2026-04-06 00:00:00
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # REVISION IDENTIFIERS: Part of the authentication system update.
@@ -16,9 +17,10 @@ depends_on = None
 
 # NOTE: THIS MIGRATION IS MANAGED AUTOMATICALLY BY THE SERVER.
 
+
 def upgrade() -> None:
     """
-    UPGRADE PHASE: Creates the 'refresh_tokens' table to store secure session 
+    UPGRADE PHASE: Creates the 'refresh_tokens' table to store secure session
     identifiers for persistent user authentication.
     """
     op.create_table(

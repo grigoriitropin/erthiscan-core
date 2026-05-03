@@ -6,6 +6,7 @@ Create Date: 2026-04-03 00:00:00
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # REVISION IDENTIFIERS: Links to the reporting/voting system migration.
@@ -16,13 +17,16 @@ depends_on = None
 
 # NOTE: THIS MIGRATION IS MANAGED AUTOMATICALLY BY THE SERVER.
 
+
 def upgrade() -> None:
     """
     UPGRADE PHASE: Adds a denormalized 'vote_sum' column to the reports table
     to improve scoring performance by avoiding heavy JOINs on every read.
     """
     # 1. Add the column with a default value of 0.
-    op.add_column("reports", sa.Column("vote_sum", sa.Integer(), server_default="0", nullable=False))
+    op.add_column(
+        "reports", sa.Column("vote_sum", sa.Integer(), server_default="0", nullable=False)
+    )
 
     # 2. DATA MIGRATION: Calculate and populate initial vote sums for existing reports.
     op.execute("""

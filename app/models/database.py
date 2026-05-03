@@ -14,6 +14,7 @@ READ_URL = os.getenv("DB_READ_URL")
 class Base(DeclarativeBase):
     pass
 
+
 # Engine for writing (primary)
 # pool_pre_ping=True: Tests connections before using them to prevent "server closed connection" errors.
 write_engine = create_async_engine(WRITE_URL, pool_pre_ping=True) if WRITE_URL else None
@@ -22,16 +23,12 @@ write_engine = create_async_engine(WRITE_URL, pool_pre_ping=True) if WRITE_URL e
 read_engine = create_async_engine(READ_URL, pool_pre_ping=True) if READ_URL else None
 
 # Session factories
-# expire_on_commit=False: Prevents SQLAlchemy from automatically fetching updated data 
+# expire_on_commit=False: Prevents SQLAlchemy from automatically fetching updated data
 # after a commit, which is crucial for async performance.
 WriteSession = (
-    async_sessionmaker(write_engine, expire_on_commit=False)
-    if write_engine is not None
-    else None
+    async_sessionmaker(write_engine, expire_on_commit=False) if write_engine is not None else None
 )
 
 ReadSession = (
-    async_sessionmaker(read_engine, expire_on_commit=False)
-    if read_engine is not None
-    else None
+    async_sessionmaker(read_engine, expire_on_commit=False) if read_engine is not None else None
 )

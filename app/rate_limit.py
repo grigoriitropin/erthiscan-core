@@ -33,8 +33,8 @@ def _client_ip(request: Request) -> str:
 
 # --- RATE LIMITING STRATEGY ---
 # We use the 'slowapi' library which integrates the 'limits' package with FastAPI.
-# For high-availability on Kubernetes, we prefer 'redis://' storage so that 
-# rate limits are shared across all pods. If Redis is unavailable, we fall 
+# For high-availability on Kubernetes, we prefer 'redis://' storage so that
+# rate limits are shared across all pods. If Redis is unavailable, we fall
 # back to 'memory://' which limits each pod independently.
 _storage = os.getenv("RATE_LIMITER_REDIS_URL") or _settings.redis_url or "memory://"
 
@@ -43,7 +43,7 @@ limiter = Limiter(
     # default_limits: Applied to every endpoint that doesn't have an explicit limit.
     default_limits=[_settings.rate_limit_default],
     storage_uri=_storage,
-    # 'moving-window': The most precise strategy. It counts requests in a rolling time 
+    # 'moving-window': The most precise strategy. It counts requests in a rolling time
     # frame rather than fixed 1-minute blocks, preventing bursts at the turn of the minute.
     strategy="moving-window",
 )

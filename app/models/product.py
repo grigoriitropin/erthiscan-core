@@ -7,10 +7,11 @@ from app.models.database import Base
 class Product(Base):
     """
     DATA MODEL: Represents a physical product linked to a company.
-    We use the 13-digit EAN barcode as the primary key because it is 
-    a universal, unique identifier for consumer goods, allowing for O(1) 
+    We use the 13-digit EAN barcode as the primary key because it is
+    a universal, unique identifier for consumer goods, allowing for O(1)
     lookups when a user scans an item.
     """
+
     __tablename__ = "products"
 
     barcode: Mapped[str] = mapped_column(String, primary_key=True)

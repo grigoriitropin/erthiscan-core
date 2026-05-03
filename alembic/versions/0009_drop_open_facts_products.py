@@ -6,6 +6,7 @@ Create Date: 2026-04-18 00:00:00
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # REVISION IDENTIFIERS: Cleanup of the legacy data staging strategy.
@@ -16,10 +17,11 @@ depends_on = None
 
 # NOTE: THIS MIGRATION IS MANAGED AUTOMATICALLY BY THE SERVER.
 
+
 def upgrade() -> None:
     """
     UPGRADE PHASE: Drops the permanent 'open_facts_products' table.
-    The import logic has been optimized to use PostgreSQL TEMP TABLES 
+    The import logic has been optimized to use PostgreSQL TEMP TABLES
     during the data sync process, making this permanent staging table obsolete.
     """
     op.drop_table("open_facts_products")
@@ -27,7 +29,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """
-    DOWNGRADE PHASE: Re-creates the 'open_facts_products' table 
+    DOWNGRADE PHASE: Re-creates the 'open_facts_products' table
     to support schema rollback.
     """
     op.create_table(

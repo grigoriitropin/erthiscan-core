@@ -9,15 +9,19 @@ from urllib.request import Request, urlopen
 from app.collector.open_facts import normalize_company_name, normalize_product_name
 from app.collector.utils import python_normalize_name
 
-OPEN_FACTS_FOOD_CSV_URL = "https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz"
-OpenFactsProductRow = tuple[str, str, str, str | None]  # barcode, product_name, company_name, open_facts_url
+OPEN_FACTS_FOOD_CSV_URL = (
+    "https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz"
+)
+OpenFactsProductRow = tuple[
+    str, str, str, str | None
+]  # barcode, product_name, company_name, open_facts_url
 OpenFactsProductBatch = list[OpenFactsProductRow]
 
 
 def _get_sync_db_url() -> str:
     """
     CONNECTION HELPER: The main API uses 'asyncpg' for asynchronous operations.
-    However, for massive bulk data imports, we use the synchronous 'psycopg' driver 
+    However, for massive bulk data imports, we use the synchronous 'psycopg' driver
     because its 'COPY FROM' implementation is highly optimized for this exact use case.
     This function strips the async prefix from the connection string.
     """
@@ -73,13 +77,12 @@ def _set_csv_field_limit() -> None:
 
 
 def _iter_open_facts_rows(
-    companies_normalized: dict[str, str],
-    seen_barcodes: set[int]
+    companies_normalized: dict[str, str], seen_barcodes: set[int]
 ) -> Generator[tuple[int, int, int, OpenFactsProductBatch]]:
     """
     MEMORY-EFFICIENT STREAMING: The Open Food Facts CSV is multi-gigabyte.
-    Loading it into RAM would crash the Kubernetes pod. 
-    This generator streams the gzipped data directly from the network, 
+    Loading it into RAM would crash the Kubernetes pod.
+    This generator streams the gzipped data directly from the network,
     parses it line-by-line, and yields batches of 5000 valid records.
     """
     _set_csv_field_limit()
@@ -125,7 +128,9 @@ def _iter_open_facts_rows(
 
                 normalized_company_name = normalize_company_name(company_name, barcode)
                 if normalized_company_name not in companies_normalized:
-                    companies_normalized[normalized_company_name] = python_normalize_name(normalized_company_name)
+                    companies_normalized[normalized_company_name] = python_normalize_name(
+                        normalized_company_name
+                    )
                 batch.append(
                     (
                         barcode,
@@ -146,10 +151,10 @@ def _iter_open_facts_rows(
 
 def import_open_facts_dump() -> None:
     """
-    HIGH-PERFORMANCE DATA PIPELINE: 
+    HIGH-PERFORMANCE DATA PIPELINE:
     1. Establishes a synchronous connection to PostgreSQL.
     2. Creates unlogged TEMP TABLES that exist only for the duration of the transaction.
-    3. Uses the blazingly fast 'COPY FROM STDIN' command to load the network stream 
+    3. Uses the blazingly fast 'COPY FROM STDIN' command to load the network stream
        directly into these temp tables, bypassing standard INSERT overhead.
     4. Performs an 'UPSERT' (INSERT ON CONFLICT) from the temp tables to the main tables,
        updating existing records only if data has changed.
@@ -186,14 +191,14 @@ def import_open_facts_dump() -> None:
             with cur.copy(
                 "COPY stage_products (barcode, product_name, company_name, open_facts_url) FROM STDIN"
             ) as copy:
-                for total_rows, kept_rows, skipped_rows, batch in _iter_open_facts_rows(companies_normalized, seen_barcodes):
+                for total_rows, kept_rows, skipped_rows, batch in _iter_open_facts_rows(
+                    companies_normalized, seen_barcodes
+                ):
                     for row in batch:
                         copy.write_row(row)
 
             # Load unique companies into stage_companies
-            with cur.copy(
-                "COPY stage_companies (name, name_normalized) FROM STDIN"
-            ) as copy:
+            with cur.copy("COPY stage_companies (name, name_normalized) FROM STDIN") as copy:
                 for company_name, name_normalized in companies_normalized.items():
                     copy.write_row((company_name, name_normalized))
 

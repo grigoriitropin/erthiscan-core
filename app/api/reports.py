@@ -23,8 +23,10 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 # --- DATA SCHEMAS (Pydantic) ---
 
+
 class CreateReportRequest(BaseModel):
     """Payload for submitting a new ethical claim or a challenge."""
+
     company_id: int
     text: str = Field(min_length=1, max_length=150)
     sources: list[str] = Field(min_length=1)
@@ -39,6 +41,7 @@ class UpdateReportRequest(BaseModel):
 
 class VoteRequest(BaseModel):
     """Payload for voting. 1 = True/Ethical, -1 = False/Unethical."""
+
     value: int = Field(ge=-1, le=1)
 
 
@@ -75,6 +78,7 @@ class UserChallengeItem(BaseModel):
 
 class UserProfile(BaseModel):
     """Profile data showing a user's contributions to the platform."""
+
     user_id: int
     username: str
     report_count: int
@@ -85,6 +89,7 @@ class UserProfile(BaseModel):
 
 # --- ENDPOINTS ---
 
+
 @router.post("", status_code=202)
 async def create_report(
     payload: CreateReportRequest,
@@ -92,10 +97,10 @@ async def create_report(
 ):
     """
     CREATE REPORT: Submits a new claim.
-    
-    ASYNC ARCHITECTURE: 
-    This endpoint returns 202 Accepted immediately after validating the input 
-    and pushing an event to Kafka. The actual database insertion and score 
+
+    ASYNC ARCHITECTURE:
+    This endpoint returns 202 Accepted immediately after validating the input
+    and pushing an event to Kafka. The actual database insertion and score
     recalculation happens asynchronously in 'worker.py'.
     """
     # VALIDATION: Ensure the target company exists.
@@ -178,7 +183,7 @@ async def delete_report(
         company_id = report.company_id
         was_top_level = report.depth == 0
 
-        # CASCADE DELETION: If a top-level report is deleted, we must also 
+        # CASCADE DELETION: If a top-level report is deleted, we must also
         # delete all its sub-reports (challenges) and all associated votes.
         if was_top_level:
             # Find sub-report ids first, then delete their votes and the sub-reports
@@ -252,8 +257,8 @@ async def vote_on_report(
             update(Report).where(Report.id == report_id).values(vote_sum=Report.vote_sum + delta)
         )
 
-        # DE-DUPLICATION (Fail-open): 
-        # Scoring recalculation is heavy. We use a short-lived Redis lock to ensure 
+        # DE-DUPLICATION (Fail-open):
+        # Scoring recalculation is heavy. We use a short-lived Redis lock to ensure
         # that a flood of simultaneous votes on the same company only triggers ONE recalculation.
         should_recalc = False
         r = await get_redis()
@@ -264,13 +269,15 @@ async def vote_on_report(
                     await r.set(f"score_recalc:{report.company_id}", "1", ex=60, nx=True)
                 )
             except RedisError:
-                # FAIL-OPEN: If Redis is down, we recalculate anyway. 
+                # FAIL-OPEN: If Redis is down, we recalculate anyway.
                 # It's better to waste CPU cycles than to leave the score out of sync.
-                logger.warning("redis score_recalc dedup failed; recalculating anyway", exc_info=True)
+                logger.warning(
+                    "redis score_recalc dedup failed; recalculating anyway", exc_info=True
+                )
                 should_recalc = True
         else:
             should_recalc = True
-            
+
         if should_recalc:
             await recalculate_company_score(session, report.company_id)
 
@@ -282,8 +289,7 @@ async def vote_on_report(
                 select(
                     func.count().filter(Vote.value == 1),
                     func.count().filter(Vote.value == -1),
-                )
-                .where(Vote.report_id == report_id)
+                ).where(Vote.report_id == report_id)
             )
         ).one()
 

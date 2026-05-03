@@ -5,7 +5,7 @@ from logging.config import fileConfig
 
 from sqlalchemy.ext.asyncio import create_async_engine
 
-# MODELS IMPORT: Import the models package to ensure all SQLAlchemy models are registered 
+# MODELS IMPORT: Import the models package to ensure all SQLAlchemy models are registered
 # on the metadata BEFORE Alembic starts comparing the code with the database.
 import app.models  # noqa: F401
 from alembic import context
@@ -74,7 +74,7 @@ async def run_async_migrations():
     """
     engine = create_async_engine(db_url, pool_pre_ping=True)
     async with engine.connect() as conn:
-        # ASYNC BRIDGE: migration logic is blocking/synchronous, so we must 
+        # ASYNC BRIDGE: migration logic is blocking/synchronous, so we must
         # use 'run_sync' to execute it safely within the async connection.
         await conn.run_sync(do_run_migrations)
     await engine.dispose()

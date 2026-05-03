@@ -1,11 +1,12 @@
 """initial core schema
 
 Revision ID: 0001_initial
-Revises: 
+Revises:
 Create Date: 2026-03-13 00:00:00
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # REVISION IDENTIFIERS: Unique markers for this specific schema version.
@@ -17,6 +18,7 @@ depends_on = None
 
 # NOTE: THIS MIGRATION IS MANAGED AUTOMATICALLY BY THE SERVER.
 # Applied via Kubernetes Job during the GitOps synchronization process.
+
 
 def upgrade() -> None:
     """

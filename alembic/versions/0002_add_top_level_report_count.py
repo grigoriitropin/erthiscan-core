@@ -6,6 +6,7 @@ Create Date: 2026-03-13 00:00:01
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # REVISION IDENTIFIERS: Linked to the 'initial core schema' revision.
@@ -15,6 +16,7 @@ branch_labels = None
 depends_on = None
 
 # NOTE: THIS MIGRATION IS MANAGED AUTOMATICALLY BY THE SERVER.
+
 
 def upgrade() -> None:
     """

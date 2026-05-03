@@ -16,7 +16,6 @@ from app.api.barcode import router as barcode_router
 from app.api.barcode import scan_router
 from app.api.companies import router as companies_router
 from app.api.reports import router as reports_router
-
 from app.events import close_producer
 from app.models.database import ReadSession, WriteSession
 from app.rate_limit import limiter
@@ -56,12 +55,13 @@ async def lifespan(app: FastAPI):
     logger.info("app_starting")
     yield
     logger.info("app_shutting_down")
-    
+
     # Gracefully close the Kafka producer.
     await close_producer()
-    
+
     # Explicitly close the Redis connection pool.
     from app.cache import _redis
+
     if _redis is not None:
         await _redis.aclose()
 
@@ -73,7 +73,7 @@ app = FastAPI(lifespan=lifespan)
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """
-    REQUEST LOGGING MIDDLEWARE: Captures method, path, and status code 
+    REQUEST LOGGING MIDDLEWARE: Captures method, path, and status code
     for every incoming HTTP request.
     """
     response = await call_next(request)
@@ -89,10 +89,12 @@ async def log_requests(request: Request, call_next):
 # RATE LIMITING: Integration with SlowAPI.
 app.state.limiter = limiter
 
+
 def _safe_rate_handler(request: Request, exc: Exception) -> JSONResponse:
     """Custom error handler for rate limit violations."""
     detail = getattr(exc, "detail", str(exc))
     return JSONResponse({"error": f"rate limit: {detail}"}, status_code=429)
+
 
 app.add_exception_handler(RateLimitExceeded, _safe_rate_handler)
 app.add_middleware(SlowAPIMiddleware)

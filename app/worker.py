@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- BACKGROUND WORKER ---
-# This service runs as a separate Kubernetes deployment. It consumes events 
-# from Kafka to perform heavy database operations asynchronously, keeping the 
+# This service runs as a separate Kubernetes deployment. It consumes events
+# from Kafka to perform heavy database operations asynchronously, keeping the
 # main API fast and responsive.
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka.erthiscan.svc.cluster.local:9092")
@@ -26,12 +26,12 @@ KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka.erthiscan.svc.cluster
 
 async def _should_recalc(company_id: int) -> bool:
     """
-    SCORING DEDUPLICATION: 
-    Recalculating a company's score is an expensive SQL operation. 
-    We use a short-lived (60s) Redis lock to ensure that even if 1,000 people 
+    SCORING DEDUPLICATION:
+    Recalculating a company's score is an expensive SQL operation.
+    We use a short-lived (60s) Redis lock to ensure that even if 1,000 people
     vote simultaneously, we only trigger ONE recalculation.
-    
-    FAIL-OPEN: If Redis is down, we return True and recalculate anyway to 
+
+    FAIL-OPEN: If Redis is down, we return True and recalculate anyway to
     ensure data consistency at the cost of temporary CPU load.
     """
     r = await get_redis()
@@ -46,7 +46,7 @@ async def _should_recalc(company_id: int) -> bool:
 
 async def handle_vote(data: dict) -> None:
     """
-    VOTE PROCESSOR: 
+    VOTE PROCESSOR:
     1. Persists the new vote to the database.
     2. Atomically increments the denormalized 'vote_sum' on the target report.
     3. Triggers a company score recalculation if the deduplication lock allows.
@@ -79,7 +79,12 @@ async def handle_vote(data: dict) -> None:
     await cache_delete_pattern(f"company:{company_id}*")
     await cache_delete_pattern("companies:*")
     await cache_delete_pattern("scan:*")
-    logger.info("vote processed: report=%d user=%d value=%d", data["report_id"], data["user_id"], data["value"])
+    logger.info(
+        "vote processed: report=%d user=%d value=%d",
+        data["report_id"],
+        data["user_id"],
+        data["value"],
+    )
 
 
 async def handle_report(data: dict) -> None:
@@ -104,6 +109,7 @@ async def handle_report(data: dict) -> None:
         if report.depth == 0:
             # We only increment the count for main claims, not sub-report challenges.
             from app.models.company import Company
+
             await session.execute(
                 update(Company)
                 .where(Company.id == data["company_id"])
@@ -129,11 +135,11 @@ HANDLERS = {
 
 async def main() -> None:
     """
-    KAFKA CONSUMER LOOP: 
+    KAFKA CONSUMER LOOP:
     - Subscribes to 'votes' and 'reports' topics.
-    - Uses 'group_id' to enable Kafka's consumer group balancing; multiple worker 
+    - Uses 'group_id' to enable Kafka's consumer group balancing; multiple worker
       pods will automatically split the partitions between them for horizontal scaling.
-    - auto_offset_reset='earliest': Ensures that if a worker crashes and restarts, 
+    - auto_offset_reset='earliest': Ensures that if a worker crashes and restarts,
       it picks up exactly where it left off without missing any events.
     """
     consumer = AIOKafkaConsumer(
