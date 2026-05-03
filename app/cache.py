@@ -13,6 +13,11 @@ _redis: redis.Redis | None = None
 
 
 async def get_redis() -> redis.Redis | None:
+    """
+    REDIS CONNECTION MANAGER: Initializes and returns the Redis connection pool.
+    - decode_responses=True: Automatically decodes byte strings to normal strings.
+    - socket_timeout=2: If Redis hangs, the API waits 2s before falling back to DB.
+    """
     global _redis
     if _redis is not None:
         return _redis
@@ -30,6 +35,10 @@ async def get_redis() -> redis.Redis | None:
 
 
 async def cache_get(key: str) -> Any | None:
+    """
+    CACHE READ: Safely retrieves and deserializes JSON data from Redis.
+    Uses a 'FAIL-OPEN' strategy: if Redis is dead, the app keeps working.
+    """
     r = await get_redis()
     if r is None:
         return None
@@ -48,6 +57,10 @@ async def cache_get(key: str) -> Any | None:
 
 
 async def cache_set(key: str, value: Any, ttl: int = 120) -> None:
+    """
+    CACHE WRITE: Serializes data to JSON and stores it with a Time-To-Live (TTL).
+    FAIL-OPEN: Silently ignores Redis connection errors so the main flow isn't interrupted.
+    """
     r = await get_redis()
     if r is None:
         return
@@ -58,6 +71,11 @@ async def cache_set(key: str, value: Any, ttl: int = 120) -> None:
 
 
 async def cache_delete_pattern(pattern: str) -> None:
+    """
+    CACHE INVALIDATION: Deletes multiple keys matching a pattern (e.g., 'company:123*').
+    Uses 'scan_iter' and 'unlink' (non-blocking delete) in batches of 500
+    to prevent blocking the single-threaded Redis server on large deletions.
+    """
     r = await get_redis()
     if r is None:
         return
@@ -75,6 +93,10 @@ async def cache_delete_pattern(pattern: str) -> None:
 
 
 async def blacklist_token(jti: str, ttl: int) -> None:
+    """
+    SECURITY (LOGOUT): Adds a JWT's unique ID to the blacklist.
+    Uses 'FAIL-CLOSED': if we can't blacklist the token, we throw a 500 error.
+    """
     r = await get_redis()
     if r is None:
         raise RuntimeError("Redis not configured, cannot blacklist token")
@@ -86,6 +108,11 @@ async def blacklist_token(jti: str, ttl: int) -> None:
 
 
 async def is_token_blacklisted(jti: str) -> bool:
+    """
+    SECURITY (VALIDATION): Checks if a token ID is in the logout blacklist.
+    Uses 'FAIL-CLOSED': if Redis is unreachable, assumes the token is blacklisted 
+    to prevent unauthorized access during a cache outage.
+    """
     r = await get_redis()
     if r is None:
         return True  # fail closed

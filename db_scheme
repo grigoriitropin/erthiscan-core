@@ -1,33 +1,27 @@
-users
+# ERTHISCAN DATABASE SCHEMA OVERVIEW
+# This file provides a high-level summary of the core database tables and their fields.
+# For the full SQLAlchemy implementation and constraints, see app/models/*.py.
 
+users
   id
   google_id
   username
 
 companies
-
   id
   name
+  name_normalized
   ethical_score
   top_level_report_count
   pending_vote_count
 
 products
-
   barcode
   name
   company_id
   open_facts_url
 
-open_facts_products
-
-  barcode
-  product_name
-  company_name
-  open_facts_url
-
 reports
-
   id
   company_id
   user_id
@@ -39,7 +33,6 @@ reports
   created_at
 
 votes
-
   id
   report_id
   user_id

@@ -5,6 +5,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """
+    ENVIRONMENT CONFIGURATION: Uses Pydantic to validate environment variables.
+    - Reads from a local '.env' file during development.
+    - Fails fast on startup if critical secrets (like JWT_SECRET) are missing or too short.
+    """
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     google_web_client_id: str = Field(alias="GOOGLE_WEB_CLIENT_ID")
@@ -24,4 +29,9 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    """
+    DEPENDENCY INJECTION: Returns a cached instance of the Settings object.
+    Using @lru_cache ensures we only read the .env file and validate variables 
+    once on startup, rather than on every single API request.
+    """
     return Settings()

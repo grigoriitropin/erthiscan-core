@@ -5,6 +5,13 @@ from app.models.database import Base
 
 
 class Vote(Base):
+    """
+    DATA MODEL: Represents a user's opinion (+1/-1) on a specific report.
+    
+    INTEGRITY:
+    - one_vote_per_user: Ensures a single user cannot vote multiple times on the same report.
+    - valid_value: Restricts values strictly to 1 (Ethical) or -1 (Unethical).
+    """
     __tablename__ = "votes"
 
     __table_args__ = (

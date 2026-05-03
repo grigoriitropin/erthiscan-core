@@ -1,3 +1,6 @@
+# SECURITY TESTS: Verifies the integrity of the JWT authentication system.
+# We test against various attack vectors like algorithm manipulation, 
+# issuer/audience spoofing, and signature expiration.
 import time
 import uuid
 
@@ -15,16 +18,19 @@ settings = get_settings()
 
 
 def test_auth_google_missing_token():
+    """Ensures the Google Auth endpoint requires a payload."""
     resp = client.post("/auth/google", json={})
     assert resp.status_code == 422
 
 
 def test_auth_refresh_missing_token():
+    """Ensures the token refresh endpoint requires a payload."""
     resp = client.post("/auth/refresh", json={})
     assert resp.status_code == 422
 
 
 def test_access_token_roundtrip_contains_all_required_claims():
+    """Verifies that generated tokens contain all mandatory RFC-7519 claims."""
     token = _make_access_token(user_id=42)
     payload = _decode(token)
     assert payload["user_id"] == 42
@@ -35,7 +41,10 @@ def test_access_token_roundtrip_contains_all_required_claims():
 
 
 def test_token_with_wrong_algorithm_rejected():
-    # "none" alg attack — must be rejected by algorithm whitelist.
+    """
+    ALGORITHM ATTACK: Ensures that we only accept the HS256 algorithm.
+    Explicitly prevents the 'none' algorithm exploit.
+    """
     now = int(time.time())
     token = jwt.encode(
         {
@@ -55,6 +64,7 @@ def test_token_with_wrong_algorithm_rejected():
 
 
 def test_token_with_wrong_issuer_rejected():
+    """SPOOFING PROTECTION: Rejects tokens with a forged issuer ('iss')."""
     now = int(time.time())
     token = jwt.encode(
         {
@@ -74,6 +84,7 @@ def test_token_with_wrong_issuer_rejected():
 
 
 def test_token_with_wrong_audience_rejected():
+    """SPOOFING PROTECTION: Rejects tokens intended for a different audience ('aud')."""
     now = int(time.time())
     token = jwt.encode(
         {
@@ -93,6 +104,7 @@ def test_token_with_wrong_audience_rejected():
 
 
 def test_token_missing_jti_rejected():
+    """REPLAY PROTECTION: Rejects tokens that lack a unique 'jti' (JWT ID) claim."""
     now = int(time.time())
     token = jwt.encode(
         {
@@ -111,6 +123,7 @@ def test_token_missing_jti_rejected():
 
 
 def test_expired_token_rejected():
+    """TEMPORAL VALIDATION: Ensures that tokens cannot be used after their 'exp' time."""
     now = int(time.time())
     token = jwt.encode(
         {
@@ -130,6 +143,7 @@ def test_expired_token_rejected():
 
 
 def test_nbf_in_future_rejected():
+    """TEMPORAL VALIDATION: Rejects tokens that are not yet valid according to 'nbf' (Not Before)."""
     now = int(time.time())
     token = jwt.encode(
         {
@@ -149,10 +163,12 @@ def test_nbf_in_future_rejected():
 
 
 def test_unauthorized_endpoint_without_token():
+    """GATEKEEPER: Ensures protected routes return 401 Unauthorized if no token is provided."""
     resp = client.get("/reports/me")
     assert resp.status_code == 401
 
 
 def test_unauthorized_endpoint_with_garbage_token():
+    """GATEKEEPER: Ensures protected routes return 401 for malformed tokens."""
     resp = client.get("/reports/me", headers={"Authorization": "Bearer not.a.jwt"})
     assert resp.status_code == 401

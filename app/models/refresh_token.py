@@ -7,6 +7,12 @@ from app.models.database import Base
 
 
 class RefreshToken(Base):
+    """
+    SECURITY MODEL: Stateful refresh tokens for JWT rotation.
+    While short-lived access tokens (JWTs) are stateless and verified via cryptography, 
+    long-lived refresh tokens are stored here. This allows us to instantly revoke a user's 
+    ability to get new access tokens (e.g., if their device is stolen).
+    """
     __tablename__ = "refresh_tokens"
 
     id: Mapped[int] = mapped_column(primary_key=True)

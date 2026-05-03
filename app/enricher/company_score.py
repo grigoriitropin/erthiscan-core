@@ -9,6 +9,13 @@ SCORE_RECALCULATION_VOTE_THRESHOLD = 10
 
 
 def normalize_ethical_score(raw_score: int) -> float:
+    """
+    SCORING NORMALIZATION: Converts an unbounded raw integer score into a 
+    bounded percentage between -100.0 and 100.0.
+    The formula uses a logarithmic-style dampening '(abs(x) + 5)' so that the 
+    first few votes have a strong impact, but it becomes harder to reach extreme 
+    scores as the raw score grows, preventing manipulation.
+    """
     if raw_score == 0:
         return 0.0
 
@@ -16,12 +23,29 @@ def normalize_ethical_score(raw_score: int) -> float:
 
 
 def register_vote(company: Company) -> bool:
+    """
+    BATCHING OPTIMIZATION: Instead of recalculating the heavy SQL query for every single vote,
+    we keep a 'pending_vote_count'. The worker only triggers a full recalculation 
+    when this threshold is reached, drastically reducing database load.
+    """
     company.pending_vote_count += 1
     return company.pending_vote_count >= SCORE_RECALCULATION_VOTE_THRESHOLD
 
 
 async def recalculate_company_score(session: AsyncSession, company_id: int) -> Company:
+    """
+    HIERARCHICAL SCORING ALGORITHM: 
+    This is the core logic of Erthiscan.
+    1. Parent Weight: Sum of all votes (+1/-1) on a top-level report.
+    2. Challenge Penalty: If a sub-report (challenge) gets positive votes, those 
+       positive votes are subtracted from the parent report's weight. 
+       (e.g., If a claim has 10 upvotes, but a challenge refuting it has 8 upvotes, 
+       the effective weight of the claim drops to 2).
+    3. Total Raw Score: The sum of all 'effective weights' across all reports for the company.
+    """
     # Step 1: vote_sum per top-level report
+    # We group all votes associated with top-level reports (depth == 0) for this company.
+    # The coalesce ensures that if a report has no votes, its sum defaults to 0.
     parent_votes = (
         select(
             Report.id.label("report_id"),
@@ -34,6 +58,7 @@ async def recalculate_company_score(session: AsyncSession, company_id: int) -> C
     )
 
     # Step 2: penalty from sub-reports — sum of positive sub-report vote_sums per parent
+    # First, we calculate the total sum of votes for each individual sub-report (depth == 1).
     sub_votes = (
         select(
             Report.parent_id.label("parent_id"),
@@ -45,6 +70,9 @@ async def recalculate_company_score(session: AsyncSession, company_id: int) -> C
         .subquery()
     )
 
+    # Next, we aggregate those sub-report scores by their parent_id.
+    # The 'case' statement is crucial: we ONLY consider sub-reports that have a POSITIVE sum.
+    # Negative sub-reports (unsuccessful challenges) do not add to the penalty.
     sub_penalty = (
         select(
             sub_votes.c.parent_id,
@@ -58,6 +86,9 @@ async def recalculate_company_score(session: AsyncSession, company_id: int) -> C
     )
 
     # Step 3: effective weight = vote_sum - penalty
+    # Finally, we join the parent votes with their calculated penalties.
+    # The effective weight for each parent report is (parent vote_sum - penalty).
+    # We sum all these effective weights together to get the 'raw_score' for the entire company.
     totals = await session.execute(
         select(
             func.count(parent_votes.c.report_id),

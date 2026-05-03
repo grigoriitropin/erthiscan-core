@@ -15,6 +15,12 @@ OpenFactsProductBatch = list[OpenFactsProductRow]
 
 
 def _get_sync_db_url() -> str:
+    """
+    CONNECTION HELPER: The main API uses 'asyncpg' for asynchronous operations.
+    However, for massive bulk data imports, we use the synchronous 'psycopg' driver 
+    because its 'COPY FROM' implementation is highly optimized for this exact use case.
+    This function strips the async prefix from the connection string.
+    """
     db_url = os.getenv("DB_WRITE_URL")
     if not db_url:
         raise RuntimeError("DB_WRITE_URL is not set")
@@ -70,6 +76,12 @@ def _iter_open_facts_rows(
     companies_normalized: dict[str, str],
     seen_barcodes: set[int]
 ) -> Generator[tuple[int, int, int, OpenFactsProductBatch]]:
+    """
+    MEMORY-EFFICIENT STREAMING: The Open Food Facts CSV is multi-gigabyte.
+    Loading it into RAM would crash the Kubernetes pod. 
+    This generator streams the gzipped data directly from the network, 
+    parses it line-by-line, and yields batches of 5000 valid records.
+    """
     _set_csv_field_limit()
 
     request = Request(
@@ -133,6 +145,16 @@ def _iter_open_facts_rows(
 
 
 def import_open_facts_dump() -> None:
+    """
+    HIGH-PERFORMANCE DATA PIPELINE: 
+    1. Establishes a synchronous connection to PostgreSQL.
+    2. Creates unlogged TEMP TABLES that exist only for the duration of the transaction.
+    3. Uses the blazingly fast 'COPY FROM STDIN' command to load the network stream 
+       directly into these temp tables, bypassing standard INSERT overhead.
+    4. Performs an 'UPSERT' (INSERT ON CONFLICT) from the temp tables to the main tables,
+       updating existing records only if data has changed.
+    5. Cleans up by running VACUUM to reclaim disk space.
+    """
     import psycopg
 
     db_url = _get_sync_db_url()

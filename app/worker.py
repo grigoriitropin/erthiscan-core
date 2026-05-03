@@ -16,11 +16,24 @@ from app.models.vote import Vote
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- BACKGROUND WORKER ---
+# This service runs as a separate Kubernetes deployment. It consumes events 
+# from Kafka to perform heavy database operations asynchronously, keeping the 
+# main API fast and responsive.
+
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka.erthiscan.svc.cluster.local:9092")
 
 
 async def _should_recalc(company_id: int) -> bool:
-    """Fail-open dedup: idempotent recalc, so on Redis hiccup we just run it."""
+    """
+    SCORING DEDUPLICATION: 
+    Recalculating a company's score is an expensive SQL operation. 
+    We use a short-lived (60s) Redis lock to ensure that even if 1,000 people 
+    vote simultaneously, we only trigger ONE recalculation.
+    
+    FAIL-OPEN: If Redis is down, we return True and recalculate anyway to 
+    ensure data consistency at the cost of temporary CPU load.
+    """
     r = await get_redis()
     if r is None:
         return True
@@ -32,6 +45,13 @@ async def _should_recalc(company_id: int) -> bool:
 
 
 async def handle_vote(data: dict) -> None:
+    """
+    VOTE PROCESSOR: 
+    1. Persists the new vote to the database.
+    2. Atomically increments the denormalized 'vote_sum' on the target report.
+    3. Triggers a company score recalculation if the deduplication lock allows.
+    4. Invalidates the cache pattern for the affected company.
+    """
     async with WriteSession() as session:
         vote = Vote(
             report_id=data["report_id"],
@@ -40,6 +60,7 @@ async def handle_vote(data: dict) -> None:
         )
         session.add(vote)
 
+        # Atomic update with .returning() to get company_id in a single round-trip.
         company_id = (
             await session.execute(
                 update(Report)
@@ -54,6 +75,7 @@ async def handle_vote(data: dict) -> None:
 
         await session.commit()
 
+    # Clear cache patterns to ensure the new vote is reflected in API responses.
     await cache_delete_pattern(f"company:{company_id}*")
     await cache_delete_pattern("companies:*")
     await cache_delete_pattern("scan:*")
@@ -61,6 +83,13 @@ async def handle_vote(data: dict) -> None:
 
 
 async def handle_report(data: dict) -> None:
+    """
+    REPORT PROCESSOR:
+    1. Persists the new report or challenge.
+    2. If it's a top-level report (depth=0), increments the company's report counter.
+    3. Triggers a company score recalculation (reports change the base weight).
+    4. Invalidates all related cache patterns.
+    """
     async with WriteSession() as session:
         report = Report(
             company_id=data["company_id"],
@@ -73,6 +102,7 @@ async def handle_report(data: dict) -> None:
         session.add(report)
 
         if report.depth == 0:
+            # We only increment the count for main claims, not sub-report challenges.
             from app.models.company import Company
             await session.execute(
                 update(Company)
@@ -98,6 +128,14 @@ HANDLERS = {
 
 
 async def main() -> None:
+    """
+    KAFKA CONSUMER LOOP: 
+    - Subscribes to 'votes' and 'reports' topics.
+    - Uses 'group_id' to enable Kafka's consumer group balancing; multiple worker 
+      pods will automatically split the partitions between them for horizontal scaling.
+    - auto_offset_reset='earliest': Ensures that if a worker crashes and restarts, 
+      it picks up exactly where it left off without missing any events.
+    """
     consumer = AIOKafkaConsumer(
         *HANDLERS.keys(),
         bootstrap_servers=KAFKA_BOOTSTRAP,
@@ -110,15 +148,20 @@ async def main() -> None:
     logger.info("worker started, listening on topics: %s", list(HANDLERS.keys()))
 
     try:
+        # INFINITE LOOP: Continuously polls Kafka for new messages.
         async for msg in consumer:
             handler = HANDLERS.get(msg.topic)
             if handler is None:
                 continue
             try:
+                # ROUTING: Dispatch the message to the appropriate handler based on topic.
                 await handler(msg.value)
             except Exception:
+                # ERROR ISOLATION: A failure in one message does NOT crash the worker.
+                # We log the exception and move to the next message.
                 logger.exception("failed to process message on topic=%s", msg.topic)
     finally:
+        # CLEANUP: Ensure the consumer connection is closed on shutdown.
         await consumer.stop()
 
 

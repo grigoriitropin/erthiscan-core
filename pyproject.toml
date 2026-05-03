@@ -4,24 +4,24 @@ version = "0.1.0"
 description = "Erthiscan core API: FastAPI backend for ethical company scoring"
 requires-python = ">=3.14"
 dependencies = [
-    "fastapi~=0.135.0",
-    "uvicorn[standard]~=0.41.0",
-    "asyncpg~=0.31.0",
-    "SQLAlchemy[asyncio]~=2.0.48",
-    "alembic~=1.18.0",
-    "psycopg[binary]~=3.3.0",
-    "httpx~=0.28.0",
-    "google-auth~=2.42.0",
-    "requests~=2.32.0",
-    "PyJWT~=2.10.0",
-    "redis[hiredis]~=5.3.0",
-    "aiokafka~=0.12.0",
-    "unidecode~=1.4.0",
-    "pydantic~=2.12.0",
-    "pydantic-settings~=2.11.0",
-    "slowapi~=0.1.9",
-    "structlog~=25.5.0",
-    "prometheus-fastapi-instrumentator~=7.1.0",
+    "fastapi~=0.135.0",                     # High-performance async API framework
+    "uvicorn[standard]~=0.41.0",           # ASGI server with uvloop support
+    "asyncpg~=0.31.0",                      # Fastest async PostgreSQL driver for Python
+    "SQLAlchemy[asyncio]~=2.0.48",          # Modern async ORM
+    "alembic~=1.18.0",                      # Schema migration management
+    "psycopg[binary]~=3.3.0",               # Needed for bulk 'COPY' operations in dump import
+    "httpx~=0.28.0",                        # Async HTTP client for external API calls
+    "google-auth~=2.42.0",                  # Google OAuth2 integration
+    "requests~=2.32.0",                     # Synchronous HTTP client (used sparingly)
+    "PyJWT~=2.10.0",                        # JWT creation and verification
+    "redis[hiredis]~=5.3.0",                # Cache and distributed locking
+    "aiokafka~=0.12.0",                     # Async Kafka integration for event-driven flow
+    "unidecode~=1.4.0",                     # Transliteration (Nestlé -> Nestle)
+    "pydantic~=2.12.0",                     # Data validation and serialization
+    "pydantic-settings~=2.11.0",            # Environment variable management
+    "slowapi~=0.1.9",                       # Rate limiting middleware
+    "structlog~=25.5.0",                    # Structured JSON logging for observability
+    "prometheus-fastapi-instrumentator~=7.1.0", # Metrics for Grafana dashboards
 ]
 
 [project.optional-dependencies]
