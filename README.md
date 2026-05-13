@@ -39,13 +39,15 @@ Erthiscan Core is the central intelligence unit of the Erthiscan project. It ena
 - `alembic/`: Database schema versioning.
 - `tests/`: Comprehensive unit and integration test suite.
 
-## Data Flow & Scoring
+## Data Flow & Scoring (Hybrid Architecture)
 
-1. **Submission**: Users submit reports or votes through the API.
-2. **Buffering**: The API emits an event to a Kafka topic and returns an immediate response.
-3. **Processing**: The `worker.py` service consumes the event, persists the data, and triggers a scoring recalculation.
+To provide immediate UI feedback while handling heavy computation, Erthiscan uses a hybrid event-driven approach:
+
+1. **Reports (Async)**: Creating a new report emits an event to Kafka. The API returns 202 Accepted immediately. The `worker.py` consumes it, persists to DB, and triggers score recalculation.
+2. **Votes & Mutations (Synchronous + Eventual Consistency)**: Voting, updating, or deleting a report synchronously mutates the database to provide instant feedback to the user. Then, it emits a lightweight `recalc_score` event to Kafka.
+3. **Processing**: The `worker.py` service consumes events and performs heavy operations asynchronously.
 4. **Scoring Logic**: Recalculates the company score using a hierarchical weight system. Positive votes on a "challenge" (sub-report) act as a penalty to the parent report's weight.
-5. **Consistency**: Redis distributed locks ensure that scoring recalculations for the same company don't overlap.
+5. **Consistency & Resilience**: Redis distributed locks ensure that scoring recalculations for the same company don't overlap (60s dedup). If Kafka goes down, the API degrades gracefully (fail-open) to ensure votes are still recorded.
 
 ## Development
 

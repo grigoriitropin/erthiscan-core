@@ -3,13 +3,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from redis.exceptions import RedisError
 from sqlalchemy import delete, func, select, update
 
 from app.api.deps import get_current_user_id
-from app.cache import cache_delete_pattern, get_redis
-from app.enricher.company_score import recalculate_company_score
-from app.events import emit_report
+from app.events import emit_recalc_score, emit_report
 from app.models.company import Company
 from app.models.database import ReadSession, WriteSession
 from app.models.report import Report
@@ -103,16 +100,15 @@ async def create_report(
     and pushing an event to Kafka. The actual database insertion and score
     recalculation happens asynchronously in 'worker.py'.
     """
-    # VALIDATION: Ensure the target company exists.
+    depth = 0
     async with ReadSession() as session:
+        # VALIDATION: Ensure the target company exists.
         company = await session.get(Company, payload.company_id)
         if company is None:
             raise HTTPException(status_code=404, detail="company not found")
 
-    depth = 0
-    # HIERARCHY VALIDATION: If replying to an existing report.
-    if payload.parent_id is not None:
-        async with ReadSession() as session:
+        # HIERARCHY VALIDATION: If replying to an existing report.
+        if payload.parent_id is not None:
             parent = await session.get(Report, payload.parent_id)
             if parent is None:
                 raise HTTPException(status_code=404, detail="parent report not found")
@@ -125,6 +121,8 @@ async def create_report(
             depth = 1
 
     # EVENT EMISSION: Send the validated payload to the Kafka broker.
+    # Note: If Kafka is down, this will return 500. This fail-closed approach
+    # prevents data loss since the report has not yet been persisted to the DB.
     await emit_report(
         company_id=payload.company_id,
         user_id=user_id,
@@ -158,10 +156,12 @@ async def update_report(
         company_id = report.company_id
         await session.commit()
 
-    # CACHE INVALIDATION: Clear all relevant caches that might display the old report data.
-    await cache_delete_pattern(f"company:{company_id}*")
-    await cache_delete_pattern("companies:*")
-    await cache_delete_pattern("scan:*")
+    # EVENT EMISSION: Offload cache invalidation
+    try:
+        await emit_recalc_score(company_id)
+    except Exception:
+        logger.warning("failed to emit recalc_score for company=%d", company_id, exc_info=True)
+
     return {"status": "updated"}
 
 
@@ -201,15 +201,14 @@ async def delete_report(
         await session.execute(delete(Vote).where(Vote.report_id == report_id))
         await session.delete(report)
         await session.flush()
-
-        # RECALCULATE: Deleting a report changes the company's ethical score.
-        await recalculate_company_score(session, company_id)
         await session.commit()
 
-    # CACHE INVALIDATION
-    await cache_delete_pattern(f"company:{company_id}*")
-    await cache_delete_pattern("companies:*")
-    await cache_delete_pattern("scan:*")
+    # EVENT EMISSION: Offload score recalculation and cache clearing
+    try:
+        await emit_recalc_score(company_id)
+    except Exception:
+        logger.warning("failed to emit recalc_score for company=%d", company_id, exc_info=True)
+
     return {"status": "deleted"}
 
 
@@ -257,30 +256,8 @@ async def vote_on_report(
             update(Report).where(Report.id == report_id).values(vote_sum=Report.vote_sum + delta)
         )
 
-        # DE-DUPLICATION (Fail-open):
-        # Scoring recalculation is heavy. We use a short-lived Redis lock to ensure
-        # that a flood of simultaneous votes on the same company only triggers ONE recalculation.
-        should_recalc = False
-        r = await get_redis()
-        if r is not None:
-            try:
-                # 'nx=True' ensures this only returns True for the FIRST request within 60s.
-                should_recalc = bool(
-                    await r.set(f"score_recalc:{report.company_id}", "1", ex=60, nx=True)
-                )
-            except RedisError:
-                # FAIL-OPEN: If Redis is down, we recalculate anyway.
-                # It's better to waste CPU cycles than to leave the score out of sync.
-                logger.warning(
-                    "redis score_recalc dedup failed; recalculating anyway", exc_info=True
-                )
-                should_recalc = True
-        else:
-            should_recalc = True
-
-        if should_recalc:
-            await recalculate_company_score(session, report.company_id)
-
+        # SECURITY: Cache company_id before committing to avoid DetachedInstanceError
+        company_id = report.company_id
         await session.commit()
 
         # Read updated counts to return to the frontend for immediate UI updates.
@@ -300,10 +277,11 @@ async def vote_on_report(
             )
         ).scalar_one_or_none()
 
-    # Invalidate all caches related to this company and search results.
-    await cache_delete_pattern(f"company:{report.company_id}*")
-    await cache_delete_pattern("companies:*")
-    await cache_delete_pattern("scan:*")
+    # EVENT EMISSION: Offload score recalculation and cache clearing
+    try:
+        await emit_recalc_score(company_id)
+    except Exception:
+        logger.warning("failed to emit recalc_score for company=%d", company_id, exc_info=True)
 
     return VoteResponse(
         ethical_count=counts[0],

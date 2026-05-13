@@ -24,14 +24,14 @@ async def get_producer() -> AIOKafkaProducer:
     return _producer
 
 
-async def emit_vote(report_id: int, user_id: int, value: int) -> None:
+async def emit_recalc_score(company_id: int) -> None:
     """
-    EVENT EMISSION: Publishes a 'vote' event to the Kafka broker.
-    This allows the main API endpoint to return a 202 Accepted immediately,
-    offloading the heavy database operations and score recalculation to the worker.
+    EVENT EMISSION: Publishes a 'recalc_score' event to the Kafka broker.
+    Used after lightweight synchronous API operations (like voting or deleting a report)
+    to offload the heavy database score recalculation and cache invalidation to the worker.
     """
     producer = await get_producer()
-    await producer.send("votes", {"report_id": report_id, "user_id": user_id, "value": value})
+    await producer.send("recalc_score", {"company_id": company_id})
 
 
 async def emit_report(

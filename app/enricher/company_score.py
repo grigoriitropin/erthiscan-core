@@ -5,8 +5,6 @@ from app.models.company import Company
 from app.models.report import Report
 from app.models.vote import Vote
 
-SCORE_RECALCULATION_VOTE_THRESHOLD = 10
-
 
 def normalize_ethical_score(raw_score: int) -> float:
     """
@@ -20,16 +18,6 @@ def normalize_ethical_score(raw_score: int) -> float:
         return 0.0
 
     return 100 * raw_score / (abs(raw_score) + 5)
-
-
-def register_vote(company: Company) -> bool:
-    """
-    BATCHING OPTIMIZATION: Instead of recalculating the heavy SQL query for every single vote,
-    we keep a 'pending_vote_count'. The worker only triggers a full recalculation
-    when this threshold is reached, drastically reducing database load.
-    """
-    company.pending_vote_count += 1
-    return company.pending_vote_count >= SCORE_RECALCULATION_VOTE_THRESHOLD
 
 
 async def recalculate_company_score(session: AsyncSession, company_id: int) -> Company:
@@ -106,7 +94,6 @@ async def recalculate_company_score(session: AsyncSession, company_id: int) -> C
 
     company.top_level_report_count = top_level_report_count
     company.ethical_score = normalize_ethical_score(raw_score)
-    company.pending_vote_count = 0
 
     await session.flush()
     return company
