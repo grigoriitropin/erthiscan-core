@@ -6,7 +6,7 @@ import os
 from aiokafka import AIOKafkaConsumer
 from redis.exceptions import RedisError
 
-from app.cache import cache_delete_pattern, get_redis
+from app.cache import get_redis
 from app.enricher.company_score import recalculate_company_score
 from app.models.database import WriteSession
 
@@ -42,22 +42,15 @@ async def _should_recalc(company_id: int) -> bool:
 
 
 async def handle_recalc_score(data: dict) -> None:
-    """
-    SCORE PROCESSOR:
-    1. Triggers a company score recalculation if the deduplication lock allows.
-    2. Invalidates the cache pattern for the affected company.
-    """
     company_id = data["company_id"]
     try:
         async with WriteSession() as session:
             if await _should_recalc(company_id):
                 await recalculate_company_score(session, company_id)
             await session.commit()
-    finally:
-        # Clear cache patterns to ensure the new score is reflected in API responses.
-        await cache_delete_pattern(f"company:{company_id}*")
-        await cache_delete_pattern("companies:*")
-        await cache_delete_pattern("scan:*")
+    except Exception:
+        logger.exception("recalc_score failed for company=%d", company_id)
+    else:
         logger.info("recalc_score processed: company=%d", company_id)
 
 

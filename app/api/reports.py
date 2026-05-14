@@ -148,6 +148,8 @@ async def create_report(
 
         await session.commit()
         await cache_delete_pattern(f"company:{company_id}*")
+        await cache_delete_pattern("companies:*")
+        await cache_delete_pattern("scan:*")
 
     try:
         await emit_recalc_score(company_id)
@@ -180,8 +182,10 @@ async def update_report(
         report.sources = payload.sources
         company_id = report.company_id
         await session.commit()
+        await cache_delete_pattern(f"company:{company_id}*")
+        await cache_delete_pattern("companies:*")
+        await cache_delete_pattern("scan:*")
 
-    # EVENT EMISSION: Offload cache invalidation
     try:
         await emit_recalc_score(company_id)
     except Exception:
@@ -235,8 +239,11 @@ async def delete_report(
 
         await session.flush()
         await session.commit()
+        await cache_delete_pattern(f"company:{company_id}*")
+        await cache_delete_pattern("companies:*")
+        await cache_delete_pattern("scan:*")
 
-    # EVENT EMISSION: Offload score recalculation and cache clearing
+    # EVENT EMISSION: Offload score recalculation
     try:
         await emit_recalc_score(company_id)
     except Exception:
@@ -292,6 +299,9 @@ async def vote_on_report(
         # SECURITY: Cache company_id before committing to avoid DetachedInstanceError
         company_id = report.company_id
         await session.commit()
+        await cache_delete_pattern(f"company:{company_id}*")
+        await cache_delete_pattern("companies:*")
+        await cache_delete_pattern("scan:*")
 
         # Read updated counts to return to the frontend for immediate UI updates.
         counts = (
@@ -310,7 +320,7 @@ async def vote_on_report(
             )
         ).scalar_one_or_none()
 
-    # EVENT EMISSION: Offload score recalculation and cache clearing
+    # EVENT EMISSION: Offload score recalculation
     try:
         await emit_recalc_score(company_id)
     except Exception:
