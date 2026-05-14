@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 
 from app.api.deps import get_current_user_id
+from app.cache import cache_delete_pattern
 from app.events import emit_recalc_score
 from app.models.company import Company
 from app.models.database import ReadSession, WriteSession
@@ -146,6 +147,7 @@ async def create_report(
             response_data["parent_id"] = report.parent_id
 
         await session.commit()
+        await cache_delete_pattern(f"company:{company_id}*")
 
     try:
         await emit_recalc_score(company_id)
