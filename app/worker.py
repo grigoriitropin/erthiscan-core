@@ -5,12 +5,10 @@ import os
 
 from aiokafka import AIOKafkaConsumer
 from redis.exceptions import RedisError
-from sqlalchemy import update
 
 from app.cache import cache_delete_pattern, get_redis
 from app.enricher.company_score import recalculate_company_score
 from app.models.database import WriteSession
-from app.models.report import Report
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -63,57 +61,15 @@ async def handle_recalc_score(data: dict) -> None:
         logger.info("recalc_score processed: company=%d", company_id)
 
 
-async def handle_report(data: dict) -> None:
-    """
-    REPORT PROCESSOR:
-    1. Persists the new report or challenge.
-    2. If it's a top-level report (depth=0), increments the company's report counter.
-    3. Triggers a company score recalculation (reports change the base weight).
-    4. Invalidates all related cache patterns.
-    """
-    try:
-        async with WriteSession() as session:
-            report = Report(
-                company_id=data["company_id"],
-                user_id=data["user_id"],
-                parent_id=data.get("parent_id"),
-                depth=data.get("depth", 0),
-                text=data["text"],
-                sources=data["sources"],
-            )
-            session.add(report)
-
-            if report.depth == 0:
-                # We only increment the count for main claims, not sub-report challenges.
-                from app.models.company import Company
-
-                await session.execute(
-                    update(Company)
-                    .where(Company.id == report.company_id)
-                    .values(top_level_report_count=Company.top_level_report_count + 1)
-                )
-
-            if await _should_recalc(report.company_id):
-                await recalculate_company_score(session, report.company_id)
-
-            await session.commit()
-            logger.info("report processed: company=%d user=%d", report.company_id, report.user_id)
-    finally:
-        await cache_delete_pattern(f"company:{data['company_id']}*")
-        await cache_delete_pattern("companies:*")
-        await cache_delete_pattern("scan:*")
-
-
 HANDLERS = {
     "recalc_score": handle_recalc_score,
-    "reports": handle_report,
 }
 
 
 async def main() -> None:
     """
     KAFKA CONSUMER LOOP:
-    - Subscribes to 'recalc_score' and 'reports' topics.
+    - Subscribes to the 'recalc_score' topic.
     - Uses 'group_id' to enable Kafka's consumer group balancing; multiple worker
       pods will automatically split the partitions between them for horizontal scaling.
     - auto_offset_reset='earliest': Ensures that if a worker crashes and restarts,

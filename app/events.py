@@ -34,33 +34,6 @@ async def emit_recalc_score(company_id: int) -> None:
     await producer.send("recalc_score", {"company_id": company_id})
 
 
-async def emit_report(
-    company_id: int,
-    user_id: int,
-    text: str,
-    sources: list[str],
-    parent_id: int | None = None,
-    depth: int = 0,
-) -> None:
-    """
-    EVENT EMISSION: Publishes a 'report' event to the Kafka broker.
-    Both new ethical claims (depth=0) and challenges (depth=1) flow through here
-    to be processed asynchronously by the backend worker.
-    """
-    producer = await get_producer()
-    await producer.send(
-        "reports",
-        {
-            "company_id": company_id,
-            "user_id": user_id,
-            "text": text,
-            "sources": sources,
-            "parent_id": parent_id,
-            "depth": depth,
-        },
-    )
-
-
 async def close_producer() -> None:
     """
     GRACEFUL SHUTDOWN: Called during the FastAPI app's shutdown lifecycle

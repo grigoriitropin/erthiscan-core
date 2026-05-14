@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 
 from app.api.deps import get_current_user_id
-from app.events import emit_recalc_score, emit_report
+from app.events import emit_recalc_score
 from app.models.company import Company
 from app.models.database import ReadSession, WriteSession
 from app.models.report import Report
@@ -87,51 +87,74 @@ class UserProfile(BaseModel):
 # --- ENDPOINTS ---
 
 
-@router.post("", status_code=202)
+@router.post("", status_code=201, response_model=UserReportItem | UserChallengeItem)
 async def create_report(
     payload: CreateReportRequest,
     user_id: int = Depends(get_current_user_id),
 ):
     """
-    CREATE REPORT: Submits a new claim.
-
-    ASYNC ARCHITECTURE:
-    This endpoint returns 202 Accepted immediately after validating the input
-    and pushing an event to Kafka. The actual database insertion and score
-    recalculation happens asynchronously in 'worker.py'.
+    CREATE REPORT: Synchronously persists a new claim. Score recalculation
+    is offloaded to the worker via Kafka.
     """
     depth = 0
-    async with ReadSession() as session:
-        # VALIDATION: Ensure the target company exists.
+    async with WriteSession() as session:
         company = await session.get(Company, payload.company_id)
         if company is None:
             raise HTTPException(status_code=404, detail="company not found")
 
-        # HIERARCHY VALIDATION: If replying to an existing report.
         if payload.parent_id is not None:
             parent = await session.get(Report, payload.parent_id)
             if parent is None:
                 raise HTTPException(status_code=404, detail="parent report not found")
-            # We only allow one level of nesting (challenges to main reports).
             if parent.depth != 0:
                 raise HTTPException(status_code=400, detail="can only reply to top-level reports")
-            # Prevent associating a challenge with a different company than its parent.
             if parent.company_id != payload.company_id:
                 raise HTTPException(status_code=400, detail="company mismatch")
             depth = 1
 
-    # EVENT EMISSION: Send the validated payload to the Kafka broker.
-    # Note: If Kafka is down, this will return 500. This fail-closed approach
-    # prevents data loss since the report has not yet been persisted to the DB.
-    await emit_report(
-        company_id=payload.company_id,
-        user_id=user_id,
-        text=payload.text,
-        sources=payload.sources,
-        parent_id=payload.parent_id,
-        depth=depth,
-    )
-    return {"status": "accepted"}
+        report = Report(
+            company_id=payload.company_id,
+            user_id=user_id,
+            parent_id=payload.parent_id,
+            depth=depth,
+            text=payload.text,
+            sources=payload.sources,
+        )
+        session.add(report)
+
+        if depth == 0:
+            await session.execute(
+                update(Company)
+                .where(Company.id == payload.company_id)
+                .values(top_level_report_count=Company.top_level_report_count + 1)
+            )
+
+        company_id = payload.company_id
+
+        await session.flush()
+
+        response_data = {
+            "id": report.id,
+            "company_id": report.company_id,
+            "company_name": company.name,
+            "text": report.text,
+            "sources": report.sources,
+            "vote_sum": report.vote_sum,
+            "created_at": report.created_at,
+        }
+        if depth == 1:
+            response_data["parent_id"] = report.parent_id
+
+        await session.commit()
+
+    try:
+        await emit_recalc_score(company_id)
+    except Exception:
+        logger.warning("failed to emit recalc_score for company=%d", company_id, exc_info=True)
+
+    if depth == 0:
+        return UserReportItem(**response_data)
+    return UserChallengeItem(**response_data)
 
 
 @router.patch("/{report_id}")
@@ -200,6 +223,14 @@ async def delete_report(
         # Delete votes on the main report, then the report itself.
         await session.execute(delete(Vote).where(Vote.report_id == report_id))
         await session.delete(report)
+
+        if was_top_level:
+            await session.execute(
+                update(Company)
+                .where(Company.id == company_id)
+                .values(top_level_report_count=Company.top_level_report_count - 1)
+            )
+
         await session.flush()
         await session.commit()
 
